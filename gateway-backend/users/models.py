@@ -37,6 +37,16 @@ class User(AbstractUser):
         default="SUBSCRIBER"
     )
 
+    is_ite_admin = models.BooleanField(
+        default=False,
+        help_text="Designates whether this user can login to the ITE admin dashboard."
+    )
+
+    is_ite_instructor = models.BooleanField(
+        default=False,
+        help_text="Designates whether this instructor belongs to the ITE department."
+    )
+
     @property
     def is_super_admin(self):
         return self.role == "SUPER_ADMIN"
@@ -55,6 +65,34 @@ class User(AbstractUser):
     @property
     def is_subscriber(self):
         return self.role == "SUBSCRIBER"
+
+    @property
+    def can_login_to_dashboard(self):
+        """Only ITE admins, ITE instructors, or super admins can login."""
+        return (
+            self.role == "SUPER_ADMIN" or
+            self.is_ite_admin or
+            self.is_ite_instructor
+        )
+
+    def save(self, *args, **kwargs):
+
+        if self.role == "DEPARTMENT_ADMIN":
+            self.is_ite_admin = True
+            self.is_ite_instructor = False
+
+        elif self.role == "INSTRUCTOR":
+            self.is_ite_admin = False
+            self.is_ite_instructor = True
+
+        elif self.role in [
+            "SUPER_ADMIN",
+            "SUBSCRIBER",
+        ]:
+            self.is_ite_admin = False
+            self.is_ite_instructor = False
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.username

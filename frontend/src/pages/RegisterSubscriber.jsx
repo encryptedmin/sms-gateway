@@ -43,7 +43,10 @@ function RegisterSubscriber() {
         setSubmitting(true);
 
         try {
-            const { confirm_password, ...payload } = formData;
+            const payload = {
+                ...formData,
+            };
+            delete payload.confirm_password;
 
             await endpoints.auth.registerSubscriber(payload);
 

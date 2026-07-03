@@ -8,7 +8,7 @@ function Navbar({ user }) {
         <div className="navbar">
             <div>
                 <h2 className="navbar-title">
-                    SMS Gateway Administration
+                    ITE SMS Department Portal
                 </h2>
             </div>
 

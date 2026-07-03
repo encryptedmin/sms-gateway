@@ -72,7 +72,9 @@ class SmsLog(models.Model):
 
     subscriber = models.ForeignKey(
         Subscriber,
-        on_delete=models.CASCADE
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True
     )
 
     recipient = models.CharField(

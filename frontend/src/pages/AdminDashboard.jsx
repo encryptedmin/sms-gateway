@@ -1,143 +1,153 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
+import StatsGrid from "../components/admin/StatsGrid";
 import AdminLayout from "../layouts/AdminLayout";
 import {
     endpoints,
     toList,
 } from "../services/api";
 
+const navCards = [
+    {
+        to: "/administrator/instructors",
+        title: "Instructor Accounts",
+        description:
+            "Create ITE instructor accounts and toggle their access.",
+    },
+    {
+        to: "/administrator/contacts",
+        title: "Contacts",
+        description:
+            "Manage individual contacts, filter the roster, and import from CSV.",
+    },
+    {
+        to: "/administrator/groups",
+        title: "Contact Groups",
+        description:
+            "Group contacts together for easier message targeting.",
+    },
+    {
+        to: "/administrator/templates",
+        title: "Message Templates",
+        description:
+            "Save reusable message templates for common announcements.",
+    },
+    {
+        to: "/administrator/messages",
+        title: "Send Message",
+        description:
+            "Compose and dispatch SMS messages to contacts, year levels, sections, groups, or everyone.",
+    },
+];
+
 function AdminDashboard() {
-    const navigate = useNavigate();
-    const [subscribers, setSubscribers] = useState([]);
-    const [plans, setPlans] = useState([]);
-    const [apiKeys, setApiKeys] = useState([]);
+    const [counts, setCounts] = useState({
+        instructors: 0,
+        contacts: 0,
+        groups: 0,
+        templates: 0,
+    });
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(true);
+
+    const loadDashboard = async () => {
+        setLoading(true);
+
+        try {
+            const [
+                instructorResponse,
+                contactResponse,
+                groupResponse,
+                templateResponse,
+            ] = await Promise.all([
+                endpoints.instructors.list(),
+                endpoints.contacts.list(),
+                endpoints.contactGroups.list(),
+                endpoints.messageTemplates.list(),
+            ]);
+
+            setCounts({
+                instructors: toList(instructorResponse.data).length,
+                contacts: toList(contactResponse.data).length,
+                groups: toList(groupResponse.data).length,
+                templates: toList(templateResponse.data).length,
+            });
+        } catch (requestError) {
+            console.error(requestError);
+            setError("Unable to load the department dashboard.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const loadDashboardData = async () => {
-            try {
-                const [
-                    subscribersResponse,
-                    plansResponse,
-                    apiKeysResponse,
-                ] = await Promise.all([
-                    endpoints.subscribers.list(),
-                    endpoints.plans.list(),
-                    endpoints.apiKeys.list(),
-                ]);
-
-                setSubscribers(
-                    toList(subscribersResponse.data)
-                );
-                setPlans(toList(plansResponse.data));
-                setApiKeys(toList(apiKeysResponse.data));
-            } catch (error) {
-                console.error(error);
-            }
-        };
-
-        loadDashboardData();
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        loadDashboard();
     }, []);
 
-    const cards = useMemo(
+    const stats = useMemo(
         () => [
             {
-                title: "Total Subscribers",
-                value: subscribers.length,
-                path: "/administrator/subscribers",
+                label: "Instructors",
+                value: counts.instructors,
             },
             {
-                title: "Active Subscribers",
-                value: subscribers.filter(
-                    (subscriber) => subscriber.active
-                ).length,
-                path: "/administrator/subscribers",
+                label: "Contacts",
+                value: counts.contacts,
             },
             {
-                title: "Total Plans",
-                value: plans.length,
-                path: "/administrator/plans",
+                label: "Class Groups",
+                value: counts.groups,
             },
             {
-                title: "Active API Keys",
-                value: apiKeys.filter((key) => key.enabled)
-                    .length,
-                path: "/administrator/api-keys",
+                label: "Templates",
+                value: counts.templates,
             },
         ],
-        [apiKeys, plans, subscribers]
+        [counts.contacts, counts.groups, counts.instructors, counts.templates]
     );
 
     return (
         <AdminLayout>
-            <div>
-                <h1 className="page-title-block">
-                    Dashboard
-                </h1>
+            <div className="page-header dashboard-heading">
+                <div>
+                    <h1>ITE Department Dashboard</h1>
 
-                <p className="muted-text">
-                    SMS Gateway Administration Overview
-                </p>
+                    <p className="muted-text">
+                        Manage instructors, class contacts, templates, and
+                        outbound messages.
+                    </p>
+                </div>
             </div>
 
-            <div className="stats-grid">
-                {cards.map((card) => (
-                    <button
-                        className="stat-card"
-                        key={card.title}
-                        onClick={() => navigate(card.path)}
-                        type="button"
-                    >
-                        <div className="stat-label">
-                            {card.title}
-                        </div>
+            {error && (
+                <div className="form-error dashboard-alert">
+                    {error}
+                </div>
+            )}
 
-                        <div className="stat-value">
-                            {card.value}
-                        </div>
-                    </button>
+            <StatsGrid stats={stats} />
+
+            <div className="department-grid">
+                {navCards.map((card) => (
+                    <Link
+                        className="panel department-panel"
+                        key={card.to}
+                        to={card.to}
+                    >
+                        <h2>{card.title}</h2>
+
+                        <p className="muted-text">{card.description}</p>
+                    </Link>
                 ))}
             </div>
 
-            <div className="panel">
-                <h2>Quick Actions</h2>
-
-                <div className="quick-actions">
-                    <button
-                        className="primary-button"
-                        onClick={() =>
-                            navigate(
-                                "/administrator/subscribers"
-                            )
-                        }
-                        type="button"
-                    >
-                        Manage Subscribers
-                    </button>
-
-                    <button
-                        className="primary-button"
-                        onClick={() =>
-                            navigate("/administrator/plans")
-                        }
-                        type="button"
-                    >
-                        Manage Plans
-                    </button>
-
-                    <button
-                        className="primary-button"
-                        onClick={() =>
-                            navigate(
-                                "/administrator/api-keys"
-                            )
-                        }
-                        type="button"
-                    >
-                        Manage API Keys
-                    </button>
+            {loading && (
+                <div className="loading-overlay">
+                    Loading department workspace...
                 </div>
-            </div>
+            )}
         </AdminLayout>
     );
 }

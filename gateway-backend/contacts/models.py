@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 
 
 class ContactGroup(models.Model):
@@ -47,6 +48,11 @@ class Contact(models.Model):
         blank=True
     )
 
+    section = models.CharField(
+        max_length=50,
+        blank=True
+    )
+
     groups = models.ManyToManyField(
         ContactGroup,
         blank=True
@@ -66,3 +72,36 @@ class Contact(models.Model):
             f"{self.first_name} "
             f"{self.last_name}"
         )
+
+
+class MessageTemplate(models.Model):
+
+    title = models.CharField(
+        max_length=120
+    )
+
+    content = models.TextField()
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
+
+    class Meta:
+        ordering = [
+            "title",
+        ]
+
+    def __str__(self):
+
+        return self.title

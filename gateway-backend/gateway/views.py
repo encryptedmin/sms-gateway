@@ -7,6 +7,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 
+from contacts.models import Contact
 from contacts.models import ContactGroup
 
 from subscribers.models import Subscriber
@@ -60,6 +61,16 @@ def _queue_sms(
     )
 
     return log
+
+
+def _active_contacts_queryset():
+
+    return Contact.objects.filter(
+        active=True
+    ).order_by(
+        "first_name",
+        "last_name",
+    )
 
 
 @api_view(["POST"])
@@ -231,6 +242,133 @@ def broadcast_sms(request):
         {
             "status": "queued",
             "group": group.name,
+            "contacts": queued
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([CanSendSms])
+def department_send_sms(request):
+
+    target_type = request.data.get(
+        "target_type",
+        "contact"
+    )
+    message = request.data.get("message")
+
+    if not message:
+        return Response(
+            {
+                "error": "message required"
+            },
+            status=400
+        )
+
+    contacts = _active_contacts_queryset()
+    target_label = "contacts"
+
+    if target_type == "contact":
+        contact_id = request.data.get("contact_id")
+
+        if not contact_id:
+            return Response(
+                {
+                    "error": "contact_id required"
+                },
+                status=400
+            )
+
+        contacts = contacts.filter(
+            id=contact_id
+        )
+        target_label = "contact"
+
+    elif target_type == "year":
+        year_level = request.data.get("year_level")
+
+        if not year_level:
+            return Response(
+                {
+                    "error": "year_level required"
+                },
+                status=400
+            )
+
+        contacts = contacts.filter(
+            year_level__iexact=year_level
+        )
+        target_label = f"year level {year_level}"
+
+    elif target_type == "class":
+        group_id = request.data.get("group_id")
+        year_level = request.data.get("year_level")
+        section = request.data.get("section")
+
+        if group_id:
+            contacts = contacts.filter(
+                groups__id=group_id
+            )
+            target_label = "group"
+
+        else:
+            if not year_level or not section:
+                return Response(
+                    {
+                        "error": "year_level and section required"
+                    },
+                    status=400
+                )
+
+            contacts = contacts.filter(
+                year_level__iexact=year_level,
+                section__iexact=section
+            )
+            target_label = f"{year_level} {section}"
+
+    elif target_type == "group":
+        group_id = request.data.get("group_id")
+
+        if not group_id:
+            return Response(
+                {
+                    "error": "group_id required"
+                },
+                status=400
+            )
+
+        contacts = contacts.filter(
+            groups__id=group_id
+        )
+        target_label = "group"
+
+    elif target_type == "all":
+        target_label = "all contacts"
+
+    else:
+        return Response(
+            {
+                "error": "invalid target_type"
+            },
+            status=400
+        )
+
+    contacts = contacts.distinct()
+
+    queued = 0
+
+    for contact in contacts:
+        _queue_sms(
+            subscriber=None,
+            recipient=contact.mobile_number,
+            message=message
+        )
+        queued += 1
+
+    return Response(
+        {
+            "status": "queued",
+            "target": target_label,
             "contacts": queued
         }
     )

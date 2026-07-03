@@ -4,6 +4,11 @@ import Login from "./pages/Login";
 import IteLogin from "./pages/IteLogin";
 import RegisterSubscriber from "./pages/RegisterSubscriber";
 import AdminDashboard from "./pages/AdminDashboard";
+import InstructorsPage from "./pages/InstructorsPage";
+import ContactsPage from "./pages/ContactsPage";
+import GroupsPage from "./pages/GroupsPage";
+import TemplatesPage from "./pages/TemplatesPage";
+import MessagesPage from "./pages/MessagesPage";
 import Plans from "./pages/Plans";
 import Subscribers from "./pages/Subscribers";
 import ApiKeys from "./pages/ApiKeys";
@@ -33,6 +38,31 @@ function App() {
             <Route
                 path="/administrator/dashboard"
                 element={<AdminDashboard />}
+            />
+
+            <Route
+                path="/administrator/instructors"
+                element={<InstructorsPage />}
+            />
+
+            <Route
+                path="/administrator/contacts"
+                element={<ContactsPage />}
+            />
+
+            <Route
+                path="/administrator/groups"
+                element={<GroupsPage />}
+            />
+
+            <Route
+                path="/administrator/templates"
+                element={<TemplatesPage />}
+            />
+
+            <Route
+                path="/administrator/messages"
+                element={<MessagesPage />}
             />
 
             <Route

@@ -4,6 +4,8 @@ from django.urls import include
 from subscribers.views import register_subscriber
 from users.views import current_user
 from users.views import create_department_admin
+from users.views import instructor_accounts
+from users.views import instructor_account_detail
 
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -46,6 +48,18 @@ urlpatterns = [
         "api/admin-accounts/",
         create_department_admin,
         name="create_department_admin"
+    ),
+
+    path(
+        "api/instructors/",
+        instructor_accounts,
+        name="instructor_accounts"
+    ),
+
+    path(
+        "api/instructors/<int:pk>/",
+        instructor_account_detail,
+        name="instructor_account_detail"
     ),
 
     path(

@@ -30,10 +30,14 @@ class ApiKeySerializer(serializers.ModelSerializer):
 
 class SmsLogSerializer(serializers.ModelSerializer):
 
-    subscriber_name = serializers.CharField(
-        source="subscriber.user.username",
-        read_only=True
-    )
+    subscriber_name = serializers.SerializerMethodField()
+
+    def get_subscriber_name(self, obj):
+
+        if not obj.subscriber_id:
+            return ""
+
+        return obj.subscriber.user.username
 
     class Meta:
         model = SmsLog

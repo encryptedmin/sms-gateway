@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from contacts.views import ContactGroupViewSet
 from contacts.views import ContactViewSet
+from contacts.views import MessageTemplateViewSet
 
 from plans.views import PlanViewSet
 
@@ -13,7 +14,8 @@ from .views import (
     SmsLogViewSet,
     SubscriptionViewSet,
     send_sms,
-    broadcast_sms
+    broadcast_sms,
+    department_send_sms
 )
 
 from .dashboard_views import (
@@ -42,6 +44,11 @@ router.register(
     basename="contact"
 )
 router.register(
+    "message-templates",
+    MessageTemplateViewSet,
+    basename="message-template"
+)
+router.register(
     "subscriptions",
     SubscriptionViewSet,
     basename="subscription"
@@ -67,6 +74,11 @@ urlpatterns = [
     path(
         "broadcast/",
         broadcast_sms
+    ),
+
+    path(
+        "department/send-sms/",
+        department_send_sms
     ),
 
     path(

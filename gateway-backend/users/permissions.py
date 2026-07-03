@@ -10,6 +10,30 @@ class IsSuperAdmin(BasePermission):
         )
 
 
+class IsIteAdmin(BasePermission):
+
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated and
+            (
+                request.user.is_ite_admin or
+                request.user.role == "DEPARTMENT_ADMIN"
+            )
+        )
+
+
+class IsIteInstructor(BasePermission):
+
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated and
+            (
+                request.user.is_ite_instructor or
+                request.user.role == "INSTRUCTOR"
+            )
+        )
+
+
 class IsDepartmentAdmin(BasePermission):
 
     def has_permission(self, request, view):

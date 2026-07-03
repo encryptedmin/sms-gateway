@@ -9,18 +9,6 @@ function Sidebar({ user }) {
             name: "Dashboard",
             path: "/administrator/dashboard",
         },
-        {
-            name: "Subscribers",
-            path: "/administrator/subscribers",
-        },
-        {
-            name: "Plans",
-            path: "/administrator/plans",
-        },
-        {
-            name: "API Keys",
-            path: "/administrator/api-keys",
-        },
     ];
 
     if (user?.role === "SUPER_ADMIN") {

@@ -10,8 +10,10 @@ from users.permissions import CanSendSms
 
 from .models import Contact
 from .models import ContactGroup
+from .models import MessageTemplate
 from .serializers import ContactGroupSerializer
 from .serializers import ContactSerializer
+from .serializers import MessageTemplateSerializer
 
 
 class ContactGroupViewSet(ModelViewSet):
@@ -33,6 +35,44 @@ class ContactViewSet(ModelViewSet):
     permission_classes = [
         CanSendSms
     ]
+
+    def get_queryset(self):
+
+        queryset = Contact.objects.prefetch_related("groups").all().order_by(
+            "first_name",
+            "last_name",
+        )
+
+        year_level = self.request.query_params.get("year_level")
+        section = self.request.query_params.get("section")
+        group_id = self.request.query_params.get("group_id")
+        active = self.request.query_params.get("active")
+
+        if year_level:
+            queryset = queryset.filter(
+                year_level__iexact=year_level
+            )
+
+        if section:
+            queryset = queryset.filter(
+                section__iexact=section
+            )
+
+        if group_id:
+            queryset = queryset.filter(
+                groups__id=group_id
+            )
+
+        if active is not None:
+            queryset = queryset.filter(
+                active=active.lower() in [
+                    "1",
+                    "true",
+                    "yes",
+                ]
+            )
+
+        return queryset.distinct()
 
     @action(
         detail=False,
@@ -116,6 +156,12 @@ class ContactViewSet(ModelViewSet):
                     ).strip(),
                     "year_level": (
                         row.get("year_level")
+                        or row.get("year")
+                        or ""
+                    ).strip(),
+                    "section": (
+                        row.get("section")
+                        or row.get("class_section")
                         or ""
                     ).strip(),
                     "active": True,
@@ -138,4 +184,21 @@ class ContactViewSet(ModelViewSet):
                 "updated": updated,
                 "skipped": skipped,
             }
+        )
+
+
+class MessageTemplateViewSet(ModelViewSet):
+
+    queryset = MessageTemplate.objects.select_related(
+        "created_by"
+    ).all()
+    serializer_class = MessageTemplateSerializer
+    permission_classes = [
+        CanSendSms
+    ]
+
+    def perform_create(self, serializer):
+
+        serializer.save(
+            created_by=self.request.user
         )

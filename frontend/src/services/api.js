@@ -37,6 +37,56 @@ export const endpoints = {
         create: (payload) =>
             api.post("/api/admin-accounts/", payload),
     },
+    instructors: {
+        list: () =>
+            api.get("/api/instructors/"),
+        create: (payload) =>
+            api.post("/api/instructors/", payload),
+        update: (id, payload) =>
+            api.patch(`/api/instructors/${id}/`, payload),
+        remove: (id) =>
+            api.delete(`/api/instructors/${id}/`),
+    },
+    contacts: {
+        list: (params) =>
+            api.get("/api/contacts/", { params }),
+        create: (payload) =>
+            api.post("/api/contacts/", payload),
+        update: (id, payload) =>
+            api.patch(`/api/contacts/${id}/`, payload),
+        remove: (id) =>
+            api.delete(`/api/contacts/${id}/`),
+        importCsv: (formData) =>
+            api.post("/api/contacts/import-csv/", formData, {
+                headers: {
+                    "Content-Type": "multipart/form-data",
+                },
+            }),
+    },
+    contactGroups: {
+        list: () =>
+            api.get("/api/contact-groups/"),
+        create: (payload) =>
+            api.post("/api/contact-groups/", payload),
+        update: (id, payload) =>
+            api.patch(`/api/contact-groups/${id}/`, payload),
+        remove: (id) =>
+            api.delete(`/api/contact-groups/${id}/`),
+    },
+    messageTemplates: {
+        list: () =>
+            api.get("/api/message-templates/"),
+        create: (payload) =>
+            api.post("/api/message-templates/", payload),
+        update: (id, payload) =>
+            api.patch(`/api/message-templates/${id}/`, payload),
+        remove: (id) =>
+            api.delete(`/api/message-templates/${id}/`),
+    },
+    departmentMessages: {
+        send: (payload) =>
+            api.post("/api/department/send-sms/", payload),
+    },
     dashboard: {
         stats: () =>
             api.get("/api/dashboard/stats/"),
