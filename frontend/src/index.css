@@ -1,111 +1,135 @@
+/* ==========================================================================
+   SMS Gateway — Design Tokens
+   Theme: network / telecom operations console
+   ========================================================================== */
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* Color: ink navy base + signal-teal accent (telecom broadcast feel) */
+  --sg-ink-900: #070c17;
+  --sg-ink-800: #0c1526;
+  --sg-ink-700: #121d34;
+  --sg-ink-600: #1b2a47;
+  --sg-line: rgba(232, 237, 247, 0.1);
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --sg-signal-500: #14e0b4;
+  --sg-signal-600: #0fc39c;
+  --sg-signal-100: rgba(20, 224, 180, 0.12);
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --sg-amber-500: #f5a524;
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  --sg-danger-500: #ff5d6c;
+  --sg-danger-100: rgba(255, 93, 108, 0.12);
+
+  --sg-text-100: #f5f7fb;
+  --sg-text-300: #c4cee2;
+  --sg-text-500: #8593b0;
+
+  --sg-surface-0: #ffffff;
+  --sg-surface-50: #f7f9fc;
+  --sg-surface-200: #e7ebf2;
+
+  --sg-font-display: "Space Grotesk", "Segoe UI", sans-serif;
+  --sg-font-body: "Inter", "Segoe UI", sans-serif;
+
+  --sg-radius-sm: 8px;
+  --sg-radius-md: 12px;
+  --sg-radius-lg: 20px;
+
+  --sg-shadow-card: 0 20px 60px -25px rgba(7, 12, 23, 0.35);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+* {
+  box-sizing: border-box;
+}
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
   margin: 0;
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+  font-family: var(--sg-font-body);
+  color: var(--sg-text-100);
+  background-color: var(--sg-surface-50);
+  -webkit-font-smoothing: antialiased;
 }
 
 h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--sg-font-display);
+  letter-spacing: -0.01em;
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+a {
+  color: inherit;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--sg-signal-500);
+  outline-offset: 2px;
+}
+
+/* Shared "signal" primary button, reused across the login form and any
+   in-app call-to-action that wants the brand accent. */
+.sg-submit-btn {
+  background: linear-gradient(135deg, var(--sg-signal-500), var(--sg-signal-600));
+  color: var(--sg-ink-900);
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0.7rem 1rem;
+  border: none;
+  border-radius: var(--sg-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.sg-submit-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  color: var(--sg-ink-900);
+}
+
+.sg-submit-btn:disabled {
+  opacity: 0.75;
+}
+
+.alert-banner {
+  background: var(--sg-danger-100);
+  border: 1px solid rgba(255, 93, 108, 0.35);
+  color: #b3283a;
+  border-radius: var(--sg-radius-sm);
+  padding: 0.7rem 0.85rem;
+  font-size: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.btn-close-inline {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0.1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

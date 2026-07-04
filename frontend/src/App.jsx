@@ -1,94 +1,64 @@
-import { Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import ProtectedRoute from "./routes/ProtectedRoute";
+import RoleRedirect from "./routes/RoleRedirect";
+import LoginPage from "./features/auth/LoginPage";
+import SuperAdminDashboard from "./pages/dashboards/SuperAdminDashboard";
+import DepartmentAdminDashboard from "./pages/dashboards/DepartmentAdminDashboard";
+import InstructorDashboard from "./pages/dashboards/InstructorDashboard";
+import SubscriberDashboard from "./pages/dashboards/SubscriberDashboard";
+import Unauthorized from "./pages/Unauthorized";
+import NotFound from "./pages/NotFound";
+import { ROLES } from "./utils/roles";
 
-import Login from "./pages/Login";
-import IteLogin from "./pages/IteLogin";
-import RegisterSubscriber from "./pages/RegisterSubscriber";
-import AdminDashboard from "./pages/AdminDashboard";
-import InstructorsPage from "./pages/InstructorsPage";
-import ContactsPage from "./pages/ContactsPage";
-import GroupsPage from "./pages/GroupsPage";
-import TemplatesPage from "./pages/TemplatesPage";
-import MessagesPage from "./pages/MessagesPage";
-import Plans from "./pages/Plans";
-import Subscribers from "./pages/Subscribers";
-import ApiKeys from "./pages/ApiKeys";
-import AdminAccounts from "./pages/AdminAccounts";
-
-function App() {
-
-    return (
-
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
         <Routes>
+          <Route path="/" element={<RoleRedirect />} />
+          <Route path="/login" element={<LoginPage />} />
 
-            <Route
-                path="/"
-                element={<Login />}
-            />
+          <Route
+            path="/super-admin"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUPER_ADMIN]}>
+                <SuperAdminDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-                path="/ite/login"
-                element={<IteLogin />}
-            />
+          <Route
+            path="/department-admin"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.DEPARTMENT_ADMIN]}>
+                <DepartmentAdminDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-                path="/register"
-                element={<RegisterSubscriber />}
-            />
+          <Route
+            path="/instructor"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.INSTRUCTOR]}>
+                <InstructorDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-                path="/administrator/dashboard"
-                element={<AdminDashboard />}
-            />
+          <Route
+            path="/subscriber"
+            element={
+              <ProtectedRoute allowedRoles={[ROLES.SUBSCRIBER]}>
+                <SubscriberDashboard />
+              </ProtectedRoute>
+            }
+          />
 
-            <Route
-                path="/administrator/instructors"
-                element={<InstructorsPage />}
-            />
-
-            <Route
-                path="/administrator/contacts"
-                element={<ContactsPage />}
-            />
-
-            <Route
-                path="/administrator/groups"
-                element={<GroupsPage />}
-            />
-
-            <Route
-                path="/administrator/templates"
-                element={<TemplatesPage />}
-            />
-
-            <Route
-                path="/administrator/messages"
-                element={<MessagesPage />}
-            />
-
-            <Route
-                path="/administrator/plans"
-                element={<Plans />}
-            />
-
-            <Route
-                path="/administrator/subscribers"
-                element={<Subscribers />}
-            />
-
-            <Route
-                path="/administrator/api-keys"
-                element={<ApiKeys />}
-            />
-
-            <Route
-                path="/administrator/admin-accounts"
-                element={<AdminAccounts />}
-            />
-
+          <Route path="/unauthorized" element={<Unauthorized />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
-
-    );
-
+      </AuthProvider>
+    </BrowserRouter>
+  );
 }
-
-export default App;
