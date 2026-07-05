@@ -124,6 +124,95 @@ input:focus-visible {
   padding: 0.1rem;
 }
 
+/* Shared lightweight modal (ConfirmDialog, PlanFormModal, etc.) */
+.sg-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 12, 23, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1500;
+  padding: 1rem;
+}
+
+.sg-modal-card {
+  background: var(--sg-surface-0);
+  border-radius: var(--sg-radius-md);
+  box-shadow: var(--sg-shadow-card);
+  width: 100%;
+  max-width: 480px;
+  padding: 1.5rem;
+  animation: sg-modal-in 0.18s ease-out;
+}
+
+@keyframes sg-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Toast notifications (ToastContext) */
+.sg-toast-stack {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: min(360px, calc(100vw - 2rem));
+}
+
+.sg-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--sg-radius-sm);
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--sg-text-100);
+  box-shadow: var(--sg-shadow-card);
+  cursor: pointer;
+  animation: sg-toast-in 0.2s ease-out;
+}
+
+.sg-toast-success {
+  background: var(--sg-ink-800);
+  border: 1px solid var(--sg-signal-600);
+}
+
+.sg-toast-success i {
+  color: var(--sg-signal-500);
+}
+
+.sg-toast-error {
+  background: var(--sg-ink-800);
+  border: 1px solid var(--sg-danger-500);
+}
+
+.sg-toast-error i {
+  color: var(--sg-danger-500);
+}
+
+@keyframes sg-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

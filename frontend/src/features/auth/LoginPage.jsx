@@ -26,8 +26,15 @@ export default function LoginPage() {
 
     try {
       const user = await login(username.trim(), password, rememberMe);
-      const redirectTo = location.state?.from?.pathname || getHomeRouteForRole(user.role);
-      navigate(redirectTo, { replace: true });
+      const homeRoute = getHomeRouteForRole(user.role);
+
+      const requestedPath = location.state?.from?.pathname;
+      const canReturnToRequestedPath =
+        requestedPath && requestedPath.startsWith(homeRoute);
+
+      navigate(canReturnToRequestedPath ? requestedPath : homeRoute, {
+        replace: true,
+      });
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
