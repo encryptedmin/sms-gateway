@@ -21,7 +21,13 @@ import MessageTemplatesPage from "./features/department-admin/pages/MessageTempl
 import SendSmsPage from "./features/department-admin/pages/SendSmsPage";
 import DeptSmsLogsPage from "./features/department-admin/pages/SmsLogsPage";
 
-import InstructorDashboard from "./pages/dashboards/InstructorDashboard";
+import InstructorLayout from "./features/instructor/InstructorLayout";
+import InstructorOverviewPage from "./features/instructor/pages/OverviewPage";
+import InstructorContactsPage from "./features/instructor/pages/ContactsPage";
+import InstructorContactGroupsPage from "./features/instructor/pages/ContactGroupsPage";
+import InstructorMessageTemplatesPage from "./features/instructor/pages/MessageTemplatesPage";
+import InstructorSendSmsPage from "./features/instructor/pages/SendSmsPage";
+import InstructorSmsLogsPage from "./features/instructor/pages/SmsLogsPage";
 import SubscriberDashboard from "./pages/dashboards/SubscriberDashboard";
 import Unauthorized from "./pages/Unauthorized";
 import NotFound from "./pages/NotFound";
@@ -72,10 +78,17 @@ export default function App() {
               path="/instructor"
               element={
                 <ProtectedRoute allowedRoles={[ROLES.INSTRUCTOR]}>
-                  <InstructorDashboard />
+                  <InstructorLayout />
                 </ProtectedRoute>
               }
-            />
+            >
+              <Route index element={<InstructorOverviewPage />} />
+              <Route path="contacts" element={<InstructorContactsPage />} />
+              <Route path="groups" element={<InstructorContactGroupsPage />} />
+              <Route path="templates" element={<InstructorMessageTemplatesPage />} />
+              <Route path="send" element={<InstructorSendSmsPage />} />
+              <Route path="logs" element={<InstructorSmsLogsPage />} />
+            </Route>
 
             <Route
               path="/subscriber"

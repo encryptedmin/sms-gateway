@@ -1,5 +1,5 @@
 from rest_framework.permissions import BasePermission
-
+from rest_framework.permissions import SAFE_METHODS
 
 class IsSuperAdmin(BasePermission):
 
@@ -87,3 +87,16 @@ class CanSendSms(BasePermission):
             request.user.is_authenticated and
             request.user.role in allowed_roles
         )
+    
+class CanManageContactGroup(BasePermission):
+
+    def has_permission(self, request, view):
+        return CanSendSms().has_permission(request, view)
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in SAFE_METHODS:
+            return True
+        if request.user.role == "INSTRUCTOR":
+            return obj.owner_id == request.user.id
+        return True
+        

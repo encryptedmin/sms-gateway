@@ -5,17 +5,50 @@ from django.conf import settings
 class ContactGroup(models.Model):
 
     name = models.CharField(
-        max_length=100,
-        unique=True
+        max_length=100
     )
 
     description = models.TextField(
         blank=True
     )
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="owned_contact_groups"
+    )
+
+    is_class = models.BooleanField(
+        default=False
+    )
+
+    adopted_groups = models.ManyToManyField(
+        "self",
+        symmetrical=False,
+        blank=True,
+        related_name="adopted_by"
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True
     )
+
+    def get_all_contacts(self):
+
+        contact_ids = set(
+            self.contact_set.values_list("id", flat=True)
+        )
+
+        for adopted in self.adopted_groups.all():
+            contact_ids.update(
+                adopted.contact_set.values_list("id", flat=True)
+            )
+
+        return Contact.objects.filter(
+            id__in=contact_ids
+        )
 
     def __str__(self):
 

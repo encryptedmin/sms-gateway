@@ -104,6 +104,7 @@ export default function PlansPage() {
                 <tr>
                   <th>Plan</th>
                   <th>Description</th>
+                  <th>Type</th>
                   <th>Price</th>
                   <th>Payment type</th>
                   <th></th>
@@ -114,6 +115,13 @@ export default function PlansPage() {
                   <tr key={plan.id}>
                     <td className="sg-cell-primary">{plan.plan_name}</td>
                     <td style={{ maxWidth: 320 }}>{plan.description}</td>
+                    <td>
+                      {plan.plan_type === "LIMITED" ? (
+                        <span>{plan.message_limit} msgs / period</span>
+                      ) : (
+                        <span className="sg-cell-muted">Unlimited</span>
+                      )}
+                    </td>
                     <td>{formatCurrency(plan.price)}</td>
                     <td>{plan.payment_type}</td>
                     <td>

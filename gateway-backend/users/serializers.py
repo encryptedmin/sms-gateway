@@ -130,3 +130,25 @@ class InstructorAccountSerializer(serializers.ModelSerializer):
             "role",
             "is_ite_instructor",
         ]
+
+class DepartmentAdminAccountSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "first_name",
+            "middle_name",
+            "last_name",
+            "extension_name",
+            "email",
+            "role",
+            "is_active",
+            "is_ite_admin",
+        ]
+        read_only_fields = [
+            "id",
+            "role",
+            "is_ite_admin",
+        ]

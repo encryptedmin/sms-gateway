@@ -11,17 +11,22 @@ from .models import SmsLog
 @permission_classes([CanSendSms])
 def dashboard_stats(request):
 
-    total_messages = SmsLog.objects.count()
+    queryset = SmsLog.objects.all()
 
-    sent_messages = SmsLog.objects.filter(
+    if request.user.role == "INSTRUCTOR":
+        queryset = queryset.filter(sent_by=request.user)
+
+    total_messages = queryset.count()
+
+    sent_messages = queryset.filter(
         status="SENT"
     ).count()
 
-    failed_messages = SmsLog.objects.filter(
+    failed_messages = queryset.filter(
         status="FAILED"
     ).count()
 
-    pending_messages = SmsLog.objects.filter(
+    pending_messages = queryset.filter(
         status="PENDING"
     ).count()
 

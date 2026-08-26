@@ -1,20 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
-import { listSubscribers, setSubscriberActive, deleteSubscriber } from "../../../api/subscribersService";
+import { listSubscribers, enrollSubscriber, setSubscriberActive, deleteSubscriber } from "../../../api/subscribersService";
 import { listApiKeys, createApiKey, setApiKeyEnabled } from "../../../api/apiKeysService";
+import { listSubscriptions, enrollSubscription, changeSubscriptionPlan } from "../../../api/subscriptionsService";
+import { listPlans } from "../../../api/plansService";
 import { useToast } from "../../../context/ToastContext";
 import { formatDate } from "../../../utils/formatters";
 import ApiKeyCell from "../components/ApiKeyCell";
+import SubscriptionCell from "../components/SubscriptionCell";
+import PlanPickerModal from "../components/PlanPickerModal";
+import EnrollSubscriberModal from "../components/EnrollSubscriberModal";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 
 export default function SubscribersPage() {
   const { showToast } = useToast();
   const [subscribers, setSubscribers] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [plans, setPlans] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [busySubscriberId, setBusySubscriberId] = useState(null);
   const [subscriberPendingDelete, setSubscriberPendingDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isEnrollOpen, setIsEnrollOpen] = useState(false);
+  const [planPickerTarget, setPlanPickerTarget] = useState(null); // { subscriber, mode: "enroll" | "change" }
+  const [isPlanSubmitting, setIsPlanSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -23,9 +33,16 @@ export default function SubscribersPage() {
   async function loadData() {
     setIsLoading(true);
     try {
-      const [subscriberData, apiKeyData] = await Promise.all([listSubscribers(), listApiKeys()]);
+      const [subscriberData, apiKeyData, subscriptionData, planData] = await Promise.all([
+        listSubscribers(),
+        listApiKeys(),
+        listSubscriptions(),
+        listPlans(),
+      ]);
       setSubscribers(subscriberData);
       setApiKeys(apiKeyData);
+      setSubscriptions(subscriptionData);
+      setPlans(planData);
     } catch {
       showToast("Couldn't load subscribers.", "error");
     } finally {
@@ -38,6 +55,16 @@ export default function SubscribersPage() {
     apiKeys.forEach((key) => map.set(key.subscriber, key));
     return map;
   }, [apiKeys]);
+
+  const activeSubscriptionBySubscriberId = useMemo(() => {
+    const map = new Map();
+    subscriptions.forEach((subscription) => {
+      if (subscription.status === "ACTIVE") {
+        map.set(subscription.subscriber, subscription);
+      }
+    });
+    return map;
+  }, [subscriptions]);
 
   const filteredSubscribers = useMemo(() => {
     if (!searchTerm.trim()) return subscribers;
@@ -107,6 +134,36 @@ export default function SubscribersPage() {
     }
   }
 
+  async function handleEnrollSubscriber(payload) {
+    const newSubscriber = await enrollSubscriber(payload);
+    setSubscribers((prev) => [...prev, newSubscriber].sort((a, b) => a.user.username.localeCompare(b.user.username)));
+    showToast(`${newSubscriber.user.username} enrolled. Share their username and temporary password directly.`);
+    setIsEnrollOpen(false);
+  }
+
+  async function handlePlanConfirm(planId) {
+    if (!planPickerTarget) return;
+    const { subscriber, mode, subscription } = planPickerTarget;
+
+    setIsPlanSubmitting(true);
+    try {
+      if (mode === "change" && subscription) {
+        const updated = await changeSubscriptionPlan(subscription.id, planId);
+        setSubscriptions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+        showToast(`Switched ${subscriber.user.username} to ${updated.plan_name}.`);
+      } else {
+        const created = await enrollSubscription(subscriber.id, planId);
+        setSubscriptions((prev) => [...prev, created]);
+        showToast(`${subscriber.user.username} enrolled in ${created.plan_name}.`);
+      }
+      setPlanPickerTarget(null);
+    } catch {
+      showToast("Couldn't save this subscription. Try again.", "error");
+    } finally {
+      setIsPlanSubmitting(false);
+    }
+  }
+
   return (
     <div>
       <div className="sg-panel">
@@ -118,7 +175,7 @@ export default function SubscribersPage() {
               handled cash-to-cash, enable or disable a key directly here.
             </div>
           </div>
-          <div style={{ minWidth: 220 }}>
+          <div className="d-flex align-items-center gap-2" style={{ minWidth: 220 }}>
             <input
               type="search"
               className="form-control sg-input"
@@ -126,6 +183,10 @@ export default function SubscribersPage() {
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
+            <button className="btn sg-submit-btn btn-sm text-nowrap" onClick={() => setIsEnrollOpen(true)}>
+              <i className="bi bi-person-plus-fill me-1"></i>
+              Enroll
+            </button>
           </div>
         </div>
 
@@ -145,6 +206,7 @@ export default function SubscribersPage() {
                   <th>Subscriber</th>
                   <th>Joined</th>
                   <th>Status</th>
+                  <th>Subscription</th>
                   <th>API Key</th>
                   <th></th>
                 </tr>
@@ -152,6 +214,7 @@ export default function SubscribersPage() {
               <tbody>
                 {filteredSubscribers.map((subscriber) => {
                   const apiKey = apiKeyBySubscriberId.get(subscriber.id);
+                  const activeSubscription = activeSubscriptionBySubscriberId.get(subscriber.id);
                   const isBusy = busySubscriberId === subscriber.id;
 
                   return (
@@ -178,6 +241,18 @@ export default function SubscribersPage() {
                           />
                         </div>
                         <span className="sg-cell-muted">{subscriber.active ? "Active" : "Inactive"}</span>
+                      </td>
+                      <td>
+                        <SubscriptionCell
+                          subscription={activeSubscription}
+                          isBusy={isBusy}
+                          onEnroll={() =>
+                            setPlanPickerTarget({ subscriber, mode: "enroll", subscription: null })
+                          }
+                          onChangePlan={() =>
+                            setPlanPickerTarget({ subscriber, mode: "change", subscription: activeSubscription })
+                          }
+                        />
                       </td>
                       <td>
                         <ApiKeyCell
@@ -214,6 +289,23 @@ export default function SubscribersPage() {
         isSubmitting={isDeleting}
         onConfirm={handleDeleteSubscriber}
         onCancel={() => setSubscriberPendingDelete(null)}
+      />
+
+      <EnrollSubscriberModal
+        show={isEnrollOpen}
+        onEnroll={handleEnrollSubscriber}
+        onCancel={() => setIsEnrollOpen(false)}
+      />
+
+      <PlanPickerModal
+        show={Boolean(planPickerTarget)}
+        mode={planPickerTarget?.mode}
+        subscriber={planPickerTarget?.subscriber}
+        plans={plans}
+        currentPlanId={planPickerTarget?.subscription?.plan}
+        isSubmitting={isPlanSubmitting}
+        onConfirm={handlePlanConfirm}
+        onCancel={() => setPlanPickerTarget(null)}
       />
     </div>
   );

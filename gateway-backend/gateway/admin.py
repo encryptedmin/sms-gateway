@@ -3,7 +3,8 @@ from django.contrib import admin
 from .models import (
     Subscription,
     ApiKey,
-    SmsLog
+    SmsLog,
+    SmsRetryPolicy
 )
 
 
@@ -38,3 +39,4 @@ class SmsLogAdmin(admin.ModelAdmin):
 
 
 admin.site.register(Subscription)
+admin.site.register(SmsRetryPolicy)

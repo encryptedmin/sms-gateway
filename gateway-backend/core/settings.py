@@ -147,6 +147,23 @@ CELERY_ACCEPT_CONTENT = [
 
 CELERY_TASK_SERIALIZER = "json"
 
+# Reliability: don't ack a task until it actually finishes. If a worker
+# process dies mid-send (crash, power loss on the Windows box, etc),
+# Redis redelivers the task to another worker instead of silently
+# losing it.
+CELERY_TASK_ACKS_LATE = True
+
+# Paired with acks_late: don't let one worker thread hoard a big batch
+# of queued messages while the other modem's thread sits idle. Keeps
+# work spread evenly across the two modem threads.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+# Run the worker with: celery -A core worker --pool=threads --concurrency=2 -l info
+# --pool=threads (not the default prefork pool) because prefork relies on
+# os.fork(), which isn't available on Windows. --concurrency=2 matches
+# the two SIM800 modems so both can be sending at the same time; bump
+# this if a third modem is ever added.
+
 SMS_MODEM_PORT = "COM3"
 SMS_MODEM_PORTS = [
     "COM3",

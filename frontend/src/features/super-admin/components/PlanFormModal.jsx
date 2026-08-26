@@ -5,6 +5,8 @@ const EMPTY_FORM = {
   description: "",
   price: "",
   payment_type: "Cash",
+  plan_type: "UNLIMITED",
+  message_limit: "",
 };
 
 export default function PlanFormModal({ show, plan, onSave, onCancel, isSubmitting }) {
@@ -13,6 +15,7 @@ export default function PlanFormModal({ show, plan, onSave, onCancel, isSubmitti
   const descId = useId();
   const priceId = useId();
   const paymentId = useId();
+  const limitId = useId();
 
   useEffect(() => {
     if (plan) {
@@ -21,6 +24,8 @@ export default function PlanFormModal({ show, plan, onSave, onCancel, isSubmitti
         description: plan.description,
         price: String(plan.price),
         payment_type: plan.payment_type,
+        plan_type: plan.plan_type || "UNLIMITED",
+        message_limit: plan.message_limit != null ? String(plan.message_limit) : "",
       });
     } else {
       setForm(EMPTY_FORM);
@@ -37,11 +42,14 @@ export default function PlanFormModal({ show, plan, onSave, onCancel, isSubmitti
 
   function handleSubmit(event) {
     event.preventDefault();
+    const isLimited = form.plan_type === "LIMITED";
     onSave({
       plan_name: form.plan_name.trim(),
       description: form.description.trim(),
       price: parseFloat(form.price) || 0,
       payment_type: form.payment_type.trim() || "Cash",
+      plan_type: form.plan_type,
+      message_limit: isLimited ? parseInt(form.message_limit, 10) || 0 : null,
     });
   }
 
@@ -85,6 +93,63 @@ export default function PlanFormModal({ show, plan, onSave, onCancel, isSubmitti
               disabled={isSubmitting}
             />
           </div>
+
+          <div className="mb-3">
+            <label className="form-label sg-label">Plan type</label>
+            <div className="d-flex gap-2">
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => setForm((prev) => ({ ...prev, plan_type: "UNLIMITED" }))}
+                disabled={isSubmitting}
+                style={{
+                  border: `1.5px solid ${form.plan_type === "UNLIMITED" ? "var(--sg-signal-500)" : "var(--sg-surface-200)"}`,
+                  background: form.plan_type === "UNLIMITED" ? "var(--sg-signal-100)" : "var(--sg-surface-0)",
+                  color: form.plan_type === "UNLIMITED" ? "var(--sg-signal-600)" : "var(--sg-text-500)",
+                }}
+              >
+                {form.plan_type === "UNLIMITED" && <i className="bi bi-check-lg me-1"></i>}
+                Unlimited
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => setForm((prev) => ({ ...prev, plan_type: "LIMITED" }))}
+                disabled={isSubmitting}
+                style={{
+                  border: `1.5px solid ${form.plan_type === "LIMITED" ? "var(--sg-signal-500)" : "var(--sg-surface-200)"}`,
+                  background: form.plan_type === "LIMITED" ? "var(--sg-signal-100)" : "var(--sg-surface-0)",
+                  color: form.plan_type === "LIMITED" ? "var(--sg-signal-600)" : "var(--sg-text-500)",
+                }}
+              >
+                {form.plan_type === "LIMITED" && <i className="bi bi-check-lg me-1"></i>}
+                Limited
+              </button>
+            </div>
+          </div>
+
+          {form.plan_type === "LIMITED" && (
+            <div className="mb-3">
+              <label htmlFor={limitId} className="form-label sg-label">
+                Messages per period
+              </label>
+              <input
+                id={limitId}
+                type="number"
+                min="1"
+                step="1"
+                className="form-control sg-input"
+                value={form.message_limit}
+                onChange={handleChange("message_limit")}
+                placeholder="e.g. 500"
+                required
+                disabled={isSubmitting}
+              />
+              <div className="form-text" style={{ fontSize: "0.78rem" }}>
+                Resets each billing period. Enforcement of this limit is a separate step, not active yet.
+              </div>
+            </div>
+          )}
 
           <div className="row g-3 mb-3">
             <div className="col-6">

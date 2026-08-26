@@ -19,6 +19,16 @@ export async function deleteContact(id) {
   await axiosClient.delete(`/contacts/${id}/`);
 }
 
+export async function bulkDeleteContacts(ids) {
+  const response = await axiosClient.post("/contacts/bulk-delete/", { ids });
+  return response.data;
+}
+
+export async function bulkDeactivateContacts(ids) {
+  const response = await axiosClient.post("/contacts/bulk-deactivate/", { ids });
+  return response.data;
+}
+
 export async function importContactsCsv(file, groupId) {
   const formData = new FormData();
   formData.append("file", file);

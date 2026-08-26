@@ -3,7 +3,8 @@ from django.urls import path
 from django.urls import include
 from subscribers.views import register_subscriber
 from users.views import current_user
-from users.views import create_department_admin
+from users.views import department_admin_accounts
+from users.views import department_admin_account_detail
 from users.views import instructor_accounts
 from users.views import instructor_account_detail
 
@@ -46,8 +47,14 @@ urlpatterns = [
 
     path(
         "api/admin-accounts/",
-        create_department_admin,
-        name="create_department_admin"
+        department_admin_accounts,
+        name="department_admin_accounts"
+    ),
+
+    path(
+        "api/admin-accounts/<int:pk>/",
+        department_admin_account_detail,
+        name="department_admin_account_detail"
     ),
 
     path(

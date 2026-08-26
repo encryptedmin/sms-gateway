@@ -15,10 +15,26 @@ class Sim800Service:
     RESPONSE_TIMEOUT = 30
     SMS_RESPONSE_SETTLE_TIME = 2
     MODEM_LOCK_TIMEOUT = 120
-    MODEM_THREAD_LOCK = threading.Lock()
+    PORT_LOCK_ACQUIRE_TIMEOUT = 15
 
-    def __init__(self):
+    # Per-port locks, keyed by port name (e.g. "COM3"). Guarding the dict
+    # itself with a small lock so two threads creating a lock for the
+    # same new port at the same instant can't create two different
+    # Lock objects for it.
+    _PORT_LOCKS_GUARD = threading.Lock()
+    _PORT_THREAD_LOCKS = {}
 
+    def __init__(self, port=None):
+        """
+        port: a specific COM port (e.g. "COM3") this instance should use.
+        Passed in by process_sms once it has decided, via round robin,
+        which modem should handle a given message. When omitted, this
+        instance falls back to trying every configured/detected port in
+        order — used by manual/CLI testing where there's no dispatcher
+        assigning a port ahead of time.
+        """
+
+        self.port = port
         self.preferred_ports = self._get_preferred_ports()
         self.baudrate = settings.SMS_MODEM_BAUDRATE
 
@@ -60,9 +76,41 @@ class Sim800Service:
             for port in list_ports.comports()
         ]
 
+    def detected_ports(self):
+        """
+        Which of the configured SMS_MODEM_PORTS are actually plugged in
+        right now. Used by the round-robin dispatcher to only rotate
+        across modems that are physically present.
+        """
+
+        available = self._available_ports()
+
+        return [
+            port
+            for port in self.preferred_ports
+            if port in available
+        ]
+
     def _candidate_ports(self):
 
         available_ports = self._available_ports()
+
+        if self.port:
+
+            # A specific modem was assigned to this send. Prefer it
+            # strongly, but still allow falling back to another
+            # configured+detected modem if the assigned one has gone
+            # missing (unplugged, driver hiccup, etc.) rather than
+            # failing outright.
+
+            fallback_ports = [
+                port
+                for port in self.preferred_ports
+                if port in available_ports
+                and port != self.port
+            ]
+
+            return [self.port] + fallback_ports
 
         preferred_available = [
             port
@@ -82,114 +130,104 @@ class Sim800Service:
 
         return self.preferred_ports
 
-    def _connect_modem(self):
+    @classmethod
+    def _thread_lock_for(cls, port):
 
-        candidate_ports = self._candidate_ports()
-        failures = []
+        with cls._PORT_LOCKS_GUARD:
 
-        for port in candidate_ports:
+            if port not in cls._PORT_THREAD_LOCKS:
+                cls._PORT_THREAD_LOCKS[port] = threading.Lock()
 
-            ser = None
+            return cls._PORT_THREAD_LOCKS[port]
 
-            try:
+    def _lock_file_path(self, port):
 
-                ser = serial.Serial(
-                    port=port,
-                    baudrate=self.baudrate,
-                    timeout=1
-                )
+        safe_name = re.sub(
+            r"[^A-Za-z0-9]+",
+            "_",
+            port
+        )
 
-                time.sleep(1)
+        return os.path.join(
+            settings.BASE_DIR,
+            f"sim800_{safe_name}.lock"
+        )
 
-                response = self._send_command(
-                    ser,
-                    "AT",
-                    timeout=5
-                )
+    def _connect_single_port(self, port):
+        """
+        Brings up exactly one port and leaves it ready for AT+CMGS.
+        Raises RuntimeError with a descriptive message on any failure.
+        Caller is responsible for closing the returned serial.Serial.
+        """
 
-                if "OK" in response:
+        ser = None
 
-                    response = self._send_command(
-                        ser,
-                        "ATE0"
-                    )
+        try:
 
-                    if "OK" not in response:
-
-                        failures.append(
-                            f"{port}: ATE0 failed: {response}"
-                        )
-
-                        continue
-
-                    response = self._send_command(
-                        ser,
-                        "AT+CREG?"
-                    )
-
-                    if not self._is_registered(response):
-
-                        failures.append(
-                            f"{port}: modem not registered: {response}"
-                        )
-
-                        continue
-
-                    response = self._send_command(
-                        ser,
-                        "AT+CMGF=1"
-                    )
-
-                    if "OK" not in response:
-
-                        failures.append(
-                            f"{port}: SMS text mode failed: {response}"
-                        )
-
-                        continue
-
-                    modem = ser
-                    ser = None
-                    return modem
-
-                failures.append(
-                    f"{port}: {response}"
-                )
-
-            except Exception as ex:
-
-                failures.append(
-                    f"{port}: {ex}"
-                )
-
-            finally:
-
-                if ser and ser.is_open:
-
-                    ser.close()
-
-        if not candidate_ports:
-
-            raise RuntimeError(
-                "No serial ports detected"
+            ser = serial.Serial(
+                port=port,
+                baudrate=self.baudrate,
+                timeout=1
             )
 
-        raise RuntimeError(
-            "No responsive SMS modem found. Tried: "
-            + "; ".join(failures)
-        )
+            time.sleep(1)
+
+            response = self._send_command(
+                ser,
+                "AT",
+                timeout=5
+            )
+
+            if "OK" not in response:
+                raise RuntimeError(response)
+
+            response = self._send_command(
+                ser,
+                "ATE0"
+            )
+
+            if "OK" not in response:
+                raise RuntimeError(f"ATE0 failed: {response}")
+
+            response = self._send_command(
+                ser,
+                "AT+CREG?"
+            )
+
+            if not self._is_registered(response):
+                raise RuntimeError(f"modem not registered: {response}")
+
+            response = self._send_command(
+                ser,
+                "AT+CMGF=1"
+            )
+
+            if "OK" not in response:
+                raise RuntimeError(f"SMS text mode failed: {response}")
+
+            modem = ser
+            ser = None
+            return modem
+
+        except Exception as ex:
+
+            raise RuntimeError(f"{port}: {ex}") from ex
+
+        finally:
+
+            if ser and ser.is_open:
+                ser.close()
 
     @contextmanager
     def _modem_lock(
         self,
+        port,
         timeout=None
     ):
 
         lock_timeout = timeout or self.MODEM_LOCK_TIMEOUT
-        lock_path = os.path.join(
-            settings.BASE_DIR,
-            "sim800.lock"
-        )
+        lock_path = self._lock_file_path(port)
+        thread_lock = self._thread_lock_for(port)
 
         lock_file = open(
             lock_path,
@@ -202,14 +240,14 @@ class Sim800Service:
 
         try:
 
-            thread_locked = self.MODEM_THREAD_LOCK.acquire(
+            thread_locked = thread_lock.acquire(
                 timeout=lock_timeout
             )
 
             if not thread_locked:
 
                 raise TimeoutError(
-                    "Timed out waiting for modem thread lock"
+                    f"Timed out waiting for {port} thread lock"
                 )
 
             while time.time() - start < lock_timeout:
@@ -250,7 +288,7 @@ class Sim800Service:
             if not locked:
 
                 raise TimeoutError(
-                    "Timed out waiting for modem lock"
+                    f"Timed out waiting for {port} modem lock"
                 )
 
             yield
@@ -284,7 +322,7 @@ class Sim800Service:
 
             if thread_locked:
 
-                self.MODEM_THREAD_LOCK.release()
+                thread_lock.release()
 
     def _read_until(
         self,
@@ -454,60 +492,117 @@ class Sim800Service:
 
         if settings.SMS_DEV_MODE:
 
-            return True, "DEV MODE"
+            return True, "DEV MODE", (self.port or "DEV")
 
-        try:
+        candidate_ports = self._candidate_ports()
 
-            with self._modem_lock():
+        if not candidate_ports:
 
-                ser = self._connect_modem()
+            return False, "No serial ports detected", ""
 
-                try:
+        failures = []
 
-                    # Recipient
+        for port in candidate_ports:
 
-                    ser.reset_input_buffer()
+            try:
 
-                    ser.write(
-                        f'AT+CMGS="{phone}"\r'.encode()
-                    )
+                with self._modem_lock(
+                    port,
+                    timeout=self.PORT_LOCK_ACQUIRE_TIMEOUT
+                ):
 
-                    prompt = self._read_until(
-                        ser,
-                        expected=">",
-                        timeout=10
-                    )
+                    ser = None
 
-                    if ">" not in prompt:
+                    try:
 
-                        return False, prompt
+                        ser = self._connect_single_port(
+                            port
+                        )
 
-                    # Message body
+                    except Exception as ex:
 
-                    ser.write(
-                        message.encode()
-                    )
+                        failures.append(
+                            str(ex)
+                        )
 
-                    ser.write(
-                        bytes([26])
-                    )
+                        continue
 
-                    result = self._read_sms_response(
-                        ser,
-                        timeout=self.RESPONSE_TIMEOUT
-                    )
+                    try:
 
-                    if "+CMGS:" in result:
-                        return True, result
+                        # Recipient
 
-                    return False, result
+                        ser.reset_input_buffer()
 
-                finally:
+                        ser.write(
+                            f'AT+CMGS="{phone}"\r'.encode()
+                        )
 
-                    if ser and ser.is_open:
+                        prompt = self._read_until(
+                            ser,
+                            expected=">",
+                            timeout=10
+                        )
 
-                        ser.close()
+                        if ">" not in prompt:
 
-        except Exception as ex:
+                            failures.append(
+                                f"{port}: {prompt}"
+                            )
 
-            return False, str(ex)
+                            continue
+
+                        # Message body
+
+                        ser.write(
+                            message.encode()
+                        )
+
+                        ser.write(
+                            bytes([26])
+                        )
+
+                        result = self._read_sms_response(
+                            ser,
+                            timeout=self.RESPONSE_TIMEOUT
+                        )
+
+                        if "+CMGS:" in result:
+                            return True, result, port
+
+                        failures.append(
+                            f"{port}: {result}"
+                        )
+
+                        continue
+
+                    except Exception as ex:
+
+                        # e.g. the modem was unplugged mid-send — treat
+                        # it the same as any other port-level failure
+                        # and let the loop try the next candidate.
+
+                        failures.append(
+                            f"{port}: {ex}"
+                        )
+
+                        continue
+
+                    finally:
+
+                        if ser and ser.is_open:
+
+                            ser.close()
+
+            except (TimeoutError, OSError) as ex:
+
+                failures.append(
+                    str(ex)
+                )
+
+                continue
+
+        return (
+            False,
+            "No responsive SMS modem found. Tried: " + "; ".join(failures),
+            ""
+        )

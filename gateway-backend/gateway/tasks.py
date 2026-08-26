@@ -1,14 +1,101 @@
+import time
+
+import redis
 from celery import shared_task
+from celery.utils.log import get_task_logger
+from django.conf import settings
 from django.utils import timezone
 
 from .models import SmsLog
+from .models import SmsRetryPolicy
 from .services import Sim800Service
 
+logger = get_task_logger(__name__)
 
-@shared_task
-def process_sms(log_id):
+# Safety-net TTL on the per-recipient lock in case a worker dies mid-send
+# and never releases it (crash, power loss on the Windows box, etc).
+RECIPIENT_LOCK_TTL_SECONDS = 90
 
-    log = None
+RECIPIENT_LOCK_POLL_INTERVAL_SECONDS = 0.5
+
+# How long a task will wait for another modem to finish texting the same
+# recipient before giving up and treating this attempt as failed. Comfortably
+# above the modem's own worst-case send time (RESPONSE_TIMEOUT + settle).
+RECIPIENT_LOCK_WAIT_TIMEOUT_SECONDS = 40
+
+
+def _redis_client():
+
+    return redis.Redis.from_url(
+        settings.CELERY_BROKER_URL
+    )
+
+
+def _recipient_lock_key(recipient):
+
+    return f"sms:sending:{recipient}"
+
+
+def _acquire_recipient_lock(client, recipient):
+    """
+    Prevents two modems from ever transmitting to the exact same
+    recipient at the exact same time (e.g. a duplicate contact row, or
+    a broadcast that resolves to the same number twice). Polls briefly
+    rather than failing immediately, since the other send is usually
+    only a few seconds from finishing.
+
+    Returns True if the lock was acquired.
+    """
+
+    key = _recipient_lock_key(recipient)
+    deadline = time.monotonic() + RECIPIENT_LOCK_WAIT_TIMEOUT_SECONDS
+
+    while time.monotonic() < deadline:
+
+        acquired = client.set(
+            key,
+            "1",
+            nx=True,
+            ex=RECIPIENT_LOCK_TTL_SECONDS
+        )
+
+        if acquired:
+            return True
+
+        time.sleep(
+            RECIPIENT_LOCK_POLL_INTERVAL_SECONDS
+        )
+
+    return False
+
+
+def _release_recipient_lock(client, recipient):
+
+    client.delete(
+        _recipient_lock_key(recipient)
+    )
+
+
+def _pick_modem_port(log_id):
+    """
+    Round robin across whichever configured modems are physically
+    detected right now. Deterministic on log_id so a message rotates
+    predictably across modems even across retries. Returns None if no
+    configured port is currently detected — Sim800Service then falls
+    back to its own candidate search (dev machines, SMS_DEV_MODE, etc).
+    """
+
+    probe = Sim800Service()
+    detected = probe.detected_ports()
+
+    if not detected:
+        return None
+
+    return detected[log_id % len(detected)]
+
+
+@shared_task(bind=True)
+def process_sms(self, log_id):
 
     try:
 
@@ -16,55 +103,108 @@ def process_sms(log_id):
             id=log_id
         )
 
-        modem = Sim800Service()
+    except SmsLog.DoesNotExist:
 
-        success, response = modem.send_sms(
-            log.recipient,
-            log.message
+        logger.error(
+            "SmsLog %s no longer exists, dropping task",
+            log_id
         )
 
-        if not response:
+        return False
 
-            response = "No modem response returned"
+    policy = SmsRetryPolicy.current()
+    port = _pick_modem_port(log_id)
 
-        log.response_message = response
+    log.attempts += 1
+    log.modem_port = port or ""
+    log.status = "RETRYING" if self.request.retries else "PENDING"
+    log.save(
+        update_fields=[
+            "attempts",
+            "modem_port",
+            "status",
+        ]
+    )
 
-        if success:
+    success = False
+    response = ""
+    client = None
+    got_lock = False
 
-            log.status = "SENT"
-            log.sent_at = timezone.now()
+    try:
+
+        client = _redis_client()
+        got_lock = _acquire_recipient_lock(
+            client,
+            log.recipient
+        )
+
+        if not got_lock:
+
+            response = (
+                f"Timed out waiting to send to {log.recipient} "
+                "(already in progress on another modem)"
+            )
 
         else:
 
-            log.status = "FAILED"
+            modem = Sim800Service(
+                port=port
+            )
 
-            log.error_message = response
+            success, response, used_port = modem.send_sms(
+                log.recipient,
+                log.message
+            )
 
+            if used_port:
+                log.modem_port = used_port
+
+    except Exception as ex:
+
+        # Unexpected infra error (Redis unreachable, an exception
+        # Sim800Service didn't already normalize, etc) — treat it as a
+        # failed attempt instead of crashing the worker.
+
+        success = False
+        response = str(ex) or ex.__class__.__name__
+
+    finally:
+
+        if got_lock and client is not None:
+            _release_recipient_lock(client, log.recipient)
+
+    if not response:
+        response = "No modem response returned"
+
+    log.response_message = response
+
+    if success:
+
+        log.status = "SENT"
+        log.sent_at = timezone.now()
+        log.error_message = ""
         log.save()
 
         return True
 
-    except Exception as ex:
+    log.error_message = response
 
-        try:
+    if self.request.retries < policy.max_retries:
 
-            if log is None:
+        log.status = "RETRYING"
+        log.save()
 
-                log = SmsLog.objects.get(
-                    id=log_id
-                )
+        countdown = policy.backoff_seconds(
+            self.request.retries + 1
+        )
 
-            response = str(ex) or ex.__class__.__name__
+        raise self.retry(
+            countdown=countdown,
+            max_retries=policy.max_retries
+        )
 
-            log.status = "FAILED"
+    log.status = "FAILED"
+    log.save()
 
-            log.error_message = response
-
-            log.response_message = response
-
-            log.save()
-
-        except Exception:
-            pass
-
-        return False
+    return False

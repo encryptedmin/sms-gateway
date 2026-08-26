@@ -4,6 +4,8 @@ import {
   createContact,
   updateContact,
   deleteContact,
+  bulkDeleteContacts,
+  bulkDeactivateContacts,
   importContactsCsv,
 } from "../../../api/contactsService";
 import { listContactGroups } from "../../../api/contactGroupsService";
@@ -24,6 +26,9 @@ export default function ContactsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [contactPendingDelete, setContactPendingDelete] = useState(null);
+
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkAction, setBulkAction] = useState(null); // "delete" | "deactivate" | null
 
   useEffect(() => {
     loadData();
@@ -61,6 +66,59 @@ export default function ContactsPage() {
         (contact.section || "").toLowerCase().includes(term)
     );
   }, [contacts, searchTerm]);
+
+  const allFilteredSelected =
+    filteredContacts.length > 0 && filteredContacts.every((contact) => selectedIds.has(contact.id));
+
+  function toggleSelected(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAllFiltered() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        filteredContacts.forEach((contact) => next.delete(contact.id));
+      } else {
+        filteredContacts.forEach((contact) => next.add(contact.id));
+      }
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkAction() {
+    if (!bulkAction || selectedIds.size === 0) return;
+    setIsSubmitting(true);
+    const ids = Array.from(selectedIds);
+    try {
+      if (bulkAction === "delete") {
+        await bulkDeleteContacts(ids);
+        showToast(`${ids.length} contact${ids.length === 1 ? "" : "s"} deleted.`);
+      } else {
+        await bulkDeactivateContacts(ids);
+        showToast(`${ids.length} contact${ids.length === 1 ? "" : "s"} deactivated.`);
+      }
+      clearSelection();
+      setBulkAction(null);
+      await loadData();
+    } catch {
+      showToast("Couldn't complete that action. Try again.", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
 
   function openCreateForm() {
     setEditingContact(null);
@@ -151,6 +209,33 @@ export default function ContactsPage() {
           </div>
         </div>
 
+        {selectedIds.size > 0 && (
+          <div
+            className="d-flex align-items-center justify-content-between flex-wrap gap-2 px-3 py-2 mb-3"
+            style={{
+              background: "var(--sg-signal-100)",
+              borderRadius: 8,
+            }}
+          >
+            <span style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+              {selectedIds.size} contact{selectedIds.size === 1 ? "" : "s"} selected
+            </span>
+            <div className="d-flex align-items-center gap-2">
+              <button className="btn btn-outline-secondary btn-sm" onClick={clearSelection}>
+                Clear
+              </button>
+              <button className="btn btn-outline-secondary btn-sm" onClick={() => setBulkAction("deactivate")}>
+                <i className="bi bi-slash-circle me-1"></i>
+                Deactivate selected
+              </button>
+              <button className="btn btn-danger btn-sm" onClick={() => setBulkAction("delete")}>
+                <i className="bi bi-trash-fill me-1"></i>
+                Delete selected
+              </button>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="d-flex justify-content-center py-5">
             <div className="spinner-border text-success" role="status">
@@ -164,6 +249,14 @@ export default function ContactsPage() {
             <table className="sg-table">
               <thead>
                 <tr>
+                  <th style={{ width: 36 }}>
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={toggleSelectAllFiltered}
+                      aria-label="Select all contacts"
+                    />
+                  </th>
                   <th>Name</th>
                   <th>Mobile</th>
                   <th>Course / Year / Section</th>
@@ -175,6 +268,14 @@ export default function ContactsPage() {
               <tbody>
                 {filteredContacts.map((contact) => (
                   <tr key={contact.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(contact.id)}
+                        onChange={() => toggleSelected(contact.id)}
+                        aria-label={`Select ${contact.first_name} ${contact.last_name}`}
+                      />
+                    </td>
                     <td className="sg-cell-primary">
                       {contact.first_name} {contact.last_name}
                     </td>
@@ -248,6 +349,21 @@ export default function ContactsPage() {
         isSubmitting={isSubmitting}
         onConfirm={handleDelete}
         onCancel={() => setContactPendingDelete(null)}
+      />
+
+      <ConfirmDialog
+        show={Boolean(bulkAction)}
+        title={bulkAction === "delete" ? "Delete selected contacts?" : "Deactivate selected contacts?"}
+        message={
+          bulkAction === "delete"
+            ? `${selectedIds.size} contact${selectedIds.size === 1 ? "" : "s"} will be permanently removed from the directory. This can't be undone.`
+            : `${selectedIds.size} contact${selectedIds.size === 1 ? "" : "s"} will be marked inactive and stop receiving SMS. You can reactivate them later from their profile.`
+        }
+        confirmLabel={bulkAction === "delete" ? "Delete contacts" : "Deactivate contacts"}
+        isDangerous={bulkAction === "delete"}
+        isSubmitting={isSubmitting}
+        onConfirm={handleBulkAction}
+        onCancel={() => setBulkAction(null)}
       />
     </div>
   );

@@ -10,24 +10,33 @@ from rest_framework.viewsets import ModelViewSet
 from contacts.models import Contact
 from contacts.models import ContactGroup
 
-from subscribers.models import Subscriber
-
 from users.permissions import IsAdminRole
 from users.permissions import IsSubscriber
 from users.permissions import CanSendSms
+from users.permissions import IsSuperAdmin
 
 from .models import ApiKey
 from .models import SmsLog
 from .models import Subscription
+from .models import SmsRetryPolicy
 
 from .serializers import ApiKeySerializer
 from .serializers import SmsLogSerializer
 from .serializers import SubscriptionSerializer
+from .serializers import SmsRetryPolicySerializer
 
 from .tasks import process_sms
 
 
 def _extract_api_key(request):
+    """
+    API key must be supplied as: Authorization: Bearer <key>
+    This is the only supported convention. (Previously also accepted a
+    raw `api_key` field in the POST body — dropped since no external
+    integration exists yet and the JWT flow already uses the same
+    Bearer header convention, keeping auth handling consistent
+    across both auth paths.)
+    """
 
     auth_header = request.headers.get(
         "Authorization",
@@ -40,20 +49,22 @@ def _extract_api_key(request):
             1
         )[1].strip()
 
-    return request.data.get("api_key")
+    return None
 
 
 def _queue_sms(
     subscriber,
     recipient,
-    message
+    message,
+    sent_by=None
 ):
 
     log = SmsLog.objects.create(
         subscriber=subscriber,
         recipient=recipient,
         message=message,
-        status="PENDING"
+        status="PENDING",
+        sent_by=sent_by
     )
 
     process_sms.delay(
@@ -71,6 +82,33 @@ def _active_contacts_queryset():
         "first_name",
         "last_name",
     )
+
+
+def _resolve_group_for_sending(group_id, request_user):
+
+    try:
+        group = ContactGroup.objects.get(id=group_id)
+    except ContactGroup.DoesNotExist:
+        return None, Response(
+            {"error": "group not found"},
+            status=404
+        )
+
+    if request_user.role == "INSTRUCTOR":
+
+        allowed_owner_ids = {None, request_user.id}
+
+        related_owner_ids = {group.owner_id} | set(
+            group.adopted_groups.values_list("owner_id", flat=True)
+        )
+
+        if not related_owner_ids.issubset(allowed_owner_ids):
+            return None, Response(
+                {"error": "you do not have access to this group"},
+                status=403
+            )
+
+    return group, None
 
 
 @api_view(["POST"])
@@ -128,8 +166,33 @@ def send_sms(request):
             status=403
         )
 
+    subscriber = key.subscriber
+
+    if not subscriber.active:
+
+        return Response(
+            {
+                "error": "subscriber account is inactive"
+            },
+            status=403
+        )
+
+    has_active_subscription = Subscription.objects.filter(
+        subscriber=subscriber,
+        status="ACTIVE"
+    ).exists()
+
+    if not has_active_subscription:
+
+        return Response(
+            {
+                "error": "no active subscription for this account"
+            },
+            status=403
+        )
+
     log = _queue_sms(
-        subscriber=key.subscriber,
+        subscriber=subscriber,
         recipient=recipient,
         message=message
     )
@@ -138,111 +201,6 @@ def send_sms(request):
         {
             "status": "queued",
             "log_id": log.id
-        }
-    )
-
-
-@api_view(["POST"])
-@permission_classes([CanSendSms])
-def broadcast_sms(request):
-
-    group_id = request.data.get(
-        "group_id"
-    )
-
-    message = request.data.get(
-        "message"
-    )
-
-    subscriber_id = request.data.get("subscriber_id")
-
-    if not group_id:
-
-        return Response(
-            {
-                "error": "group_id required"
-            },
-            status=400
-        )
-
-    if not message:
-
-        return Response(
-            {
-                "error": "message required"
-            },
-            status=400
-        )
-
-    try:
-
-        group = ContactGroup.objects.get(
-            id=group_id
-        )
-
-    except ContactGroup.DoesNotExist:
-
-        return Response(
-            {
-                "error": "group not found"
-            },
-            status=404
-        )
-
-    subscriber = None
-
-    if subscriber_id:
-
-        try:
-            subscriber = Subscriber.objects.get(
-                id=subscriber_id
-            )
-
-        except Subscriber.DoesNotExist:
-            return Response(
-                {
-                    "error": "subscriber not found"
-                },
-                status=404
-            )
-
-    else:
-
-        subscriber = getattr(
-            request.user,
-            "subscriber",
-            None
-        )
-
-    if not subscriber:
-        return Response(
-            {
-                "error": "subscriber_id required for this user"
-            },
-            status=400
-        )
-
-    contacts = group.contact_set.filter(
-        active=True
-    )
-
-    queued = 0
-
-    for contact in contacts:
-
-        _queue_sms(
-            subscriber=subscriber,
-            recipient=contact.mobile_number,
-            message=message
-        )
-
-        queued += 1
-
-    return Response(
-        {
-            "status": "queued",
-            "group": group.name,
-            "contacts": queued
         }
     )
 
@@ -306,10 +264,18 @@ def department_send_sms(request):
         section = request.data.get("section")
 
         if group_id:
-            contacts = contacts.filter(
-                groups__id=group_id
+            group, error_response = _resolve_group_for_sending(
+                group_id,
+                request.user
             )
-            target_label = "group"
+
+            if error_response:
+                return error_response
+
+            contacts = group.get_all_contacts().filter(
+                active=True
+            )
+            target_label = group.name
 
         else:
             if not year_level or not section:
@@ -337,10 +303,18 @@ def department_send_sms(request):
                 status=400
             )
 
-        contacts = contacts.filter(
-            groups__id=group_id
+        group, error_response = _resolve_group_for_sending(
+            group_id,
+            request.user
         )
-        target_label = "group"
+
+        if error_response:
+            return error_response
+
+        contacts = group.get_all_contacts().filter(
+            active=True
+        )
+        target_label = group.name
 
     elif target_type == "all":
         target_label = "all contacts"
@@ -361,7 +335,8 @@ def department_send_sms(request):
         _queue_sms(
             subscriber=None,
             recipient=contact.mobile_number,
-            message=message
+            message=message,
+            sent_by=request.user
         )
         queued += 1
 
@@ -391,7 +366,13 @@ class SmsLogViewSet(ModelViewSet):
         queryset = SmsLog.objects.select_related(
             "subscriber",
             "subscriber__user",
+            "sent_by",
         ).all().order_by("-created_at")
+
+        if self.request.user.role == "INSTRUCTOR":
+            queryset = queryset.filter(
+                sent_by=self.request.user
+            )
 
         status_filter = self.request.query_params.get("status")
         subscriber_id = self.request.query_params.get("subscriber_id")
@@ -543,3 +524,39 @@ class ApiKeyViewSet(ModelViewSet):
         return Response(
             self.get_serializer(key).data
         )
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsSuperAdmin])
+def retry_policy(request):
+    """
+    Lets the super admin view and tune how gateway.tasks.process_sms
+    retries a failed send (attempt count + backoff), without touching
+    code or redeploying.
+    """
+
+    policy = SmsRetryPolicy.current()
+
+    if request.method == "PATCH":
+
+        serializer = SmsRetryPolicySerializer(
+            policy,
+            data=request.data,
+            partial=True
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        serializer.save(
+            updated_by=request.user
+        )
+
+        return Response(
+            serializer.data
+        )
+
+    return Response(
+        SmsRetryPolicySerializer(policy).data
+    )

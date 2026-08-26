@@ -14,8 +14,8 @@ from .views import (
     SmsLogViewSet,
     SubscriptionViewSet,
     send_sms,
-    broadcast_sms,
-    department_send_sms
+    department_send_sms,
+    retry_policy
 )
 
 from .dashboard_views import (
@@ -72,11 +72,6 @@ urlpatterns = [
     ),
 
     path(
-        "broadcast/",
-        broadcast_sms
-    ),
-
-    path(
         "department/send-sms/",
         department_send_sms
     ),
@@ -84,6 +79,11 @@ urlpatterns = [
     path(
         "dashboard/stats/",
         dashboard_stats
+    ),
+
+    path(
+        "retry-policy/",
+        retry_policy
     ),
 
 ] + router.urls

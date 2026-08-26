@@ -11,6 +11,7 @@ from users.models import User
 from .serializers import CurrentUserSerializer
 from .serializers import DepartmentAdminCreateSerializer
 from .serializers import InstructorAccountSerializer
+from .serializers import DepartmentAdminAccountSerializer
 from .serializers import InstructorCreateSerializer
 
 
@@ -23,23 +24,74 @@ def current_user(request):
     )
 
 
-@api_view(["POST"])
+@api_view(["GET", "POST"])
 @permission_classes([IsSuperAdmin])
-def create_department_admin(request):
+def department_admin_accounts(request):
 
-    serializer = DepartmentAdminCreateSerializer(
-        data=request.data
+    if request.method == "POST":
+        serializer = DepartmentAdminCreateSerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        user = serializer.save()
+
+        return Response(
+            DepartmentAdminAccountSerializer(user).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    admins = User.objects.filter(
+        role="DEPARTMENT_ADMIN",
+        is_ite_admin=True
+    ).order_by(
+        "last_name",
+        "first_name",
+    )
+
+    return Response(
+        DepartmentAdminAccountSerializer(
+            admins,
+            many=True
+        ).data
+    )
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsSuperAdmin])
+def department_admin_account_detail(request, pk):
+
+    admin = get_object_or_404(
+        User,
+        pk=pk,
+        role="DEPARTMENT_ADMIN",
+        is_ite_admin=True
+    )
+
+    if request.method == "DELETE":
+        admin.delete()
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+    serializer = DepartmentAdminAccountSerializer(
+        admin,
+        data=request.data,
+        partial=True
     )
 
     serializer.is_valid(
         raise_exception=True
     )
 
-    user = serializer.save()
+    serializer.save()
 
     return Response(
-        DepartmentAdminCreateSerializer(user).data,
-        status=status.HTTP_201_CREATED
+        serializer.data
     )
 
 

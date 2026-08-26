@@ -1,6 +1,7 @@
 import csv
 import io
-
+from django.db.models import Q
+from users.permissions import CanManageContactGroup
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -18,11 +19,42 @@ from .serializers import MessageTemplateSerializer
 
 class ContactGroupViewSet(ModelViewSet):
 
-    queryset = ContactGroup.objects.all().order_by("name")
     serializer_class = ContactGroupSerializer
     permission_classes = [
-        CanSendSms
+        CanManageContactGroup
     ]
+
+    def get_queryset(self):
+
+        user = self.request.user
+
+        queryset = ContactGroup.objects.all().order_by("name")
+
+        if user.role == "INSTRUCTOR":
+            # instructors can see their own groups plus shared
+            # department-wide groups (owner is null) so they can adopt
+            # them into a class — but editing is still locked down by
+            # CanManageContactGroup's object-level check.
+            queryset = queryset.filter(
+                Q(owner=user) | Q(owner__isnull=True)
+            )
+
+        mine_only = self.request.query_params.get("mine")
+
+        if mine_only and mine_only.lower() in ["1", "true", "yes"]:
+            queryset = queryset.filter(owner=user)
+
+        return queryset.distinct()
+
+    def perform_create(self, serializer):
+
+        owner = (
+            self.request.user
+            if self.request.user.role == "INSTRUCTOR"
+            else None
+        )
+
+        serializer.save(owner=owner)
 
 
 class ContactViewSet(ModelViewSet):
@@ -47,6 +79,7 @@ class ContactViewSet(ModelViewSet):
         section = self.request.query_params.get("section")
         group_id = self.request.query_params.get("group_id")
         active = self.request.query_params.get("active")
+        mine_only = self.request.query_params.get("mine")
 
         if year_level:
             queryset = queryset.filter(
@@ -70,6 +103,14 @@ class ContactViewSet(ModelViewSet):
                     "true",
                     "yes",
                 ]
+            )
+
+        if mine_only and mine_only.lower() in ["1", "true", "yes"]:
+            # contacts belonging to ANY group owned by the requesting
+            # instructor — lets an instructor's "Contacts" page show only
+            # people relevant to them, not the whole department directory.
+            queryset = queryset.filter(
+                groups__owner=self.request.user
             )
 
         return queryset.distinct()
@@ -183,6 +224,67 @@ class ContactViewSet(ModelViewSet):
                 "created": created,
                 "updated": updated,
                 "skipped": skipped,
+            }
+        )
+
+
+    @action(
+        detail=False,
+        methods=[
+            "post",
+        ],
+        url_path="bulk-delete"
+    )
+    def bulk_delete(self, request):
+
+        ids = request.data.get("ids")
+
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {
+                    "error": "ids (non-empty list) required"
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        deleted_count, _ = Contact.objects.filter(
+            id__in=ids
+        ).delete()
+
+        return Response(
+            {
+                "deleted": deleted_count
+            }
+        )
+
+    @action(
+        detail=False,
+        methods=[
+            "post",
+        ],
+        url_path="bulk-deactivate"
+    )
+    def bulk_deactivate(self, request):
+
+        ids = request.data.get("ids")
+
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {
+                    "error": "ids (non-empty list) required"
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        updated = Contact.objects.filter(
+            id__in=ids
+        ).update(
+            active=False
+        )
+
+        return Response(
+            {
+                "updated": updated
             }
         )
 
