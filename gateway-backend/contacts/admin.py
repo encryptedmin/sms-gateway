@@ -11,6 +11,8 @@ class ContactGroupAdmin(admin.ModelAdmin):
 
     list_display = (
         "name",
+        "owner",
+        "is_shared",
         "created_at",
     )
 
@@ -24,6 +26,8 @@ class ContactAdmin(admin.ModelAdmin):
         "mobile_number",
         "course",
         "year_level",
+        "owner",
+        "is_shared",
         "active",
     )
 

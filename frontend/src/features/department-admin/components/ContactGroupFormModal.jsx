@@ -1,15 +1,20 @@
 import { useEffect, useId, useState } from "react";
 
-const EMPTY_FORM = { name: "", description: "" };
+const EMPTY_FORM = { name: "", description: "", is_shared: false };
 
 export default function ContactGroupFormModal({ show, group, onSave, onCancel, isSubmitting }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const nameId = useId();
   const descId = useId();
+  const sharedId = useId();
 
   useEffect(() => {
     if (group) {
-      setForm({ name: group.name, description: group.description || "" });
+      setForm({
+        name: group.name,
+        description: group.description || "",
+        is_shared: Boolean(group.is_shared),
+      });
     } else {
       setForm(EMPTY_FORM);
     }
@@ -21,12 +26,16 @@ export default function ContactGroupFormModal({ show, group, onSave, onCancel, i
 
   function handleSubmit(event) {
     event.preventDefault();
-    onSave({ name: form.name.trim(), description: form.description.trim() });
+    onSave({
+      name: form.name.trim(),
+      description: form.description.trim(),
+      is_shared: form.is_shared,
+    });
   }
 
   return (
-    <div className="sg-modal-backdrop" onClick={onCancel}>
-      <div className="sg-modal-card" onClick={(event) => event.stopPropagation()}>
+    <div className="sg-modal-backdrop">
+      <div className="sg-modal-card" role="dialog" aria-modal="true">
         <h5 className="mb-1">{group ? "Edit Contact Group" : "New Contact Group"}</h5>
         <p className="text-muted mb-3" style={{ fontSize: "0.88rem" }}>
           e.g. "BSIT 1A", "BSIT 2B", or a broader group like "BSIT 1".
@@ -61,6 +70,30 @@ export default function ContactGroupFormModal({ show, group, onSave, onCancel, i
               onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
               disabled={isSubmitting}
             />
+          </div>
+
+          <div
+            className="form-check form-switch mb-3 p-3"
+            style={{ border: "1px solid var(--sg-surface-200)", borderRadius: 8 }}
+          >
+            <input
+              id={sharedId}
+              type="checkbox"
+              className="form-check-input"
+              checked={form.is_shared}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, is_shared: event.target.checked }))
+              }
+              disabled={isSubmitting}
+            />
+            <label htmlFor={sharedId} className="form-check-label sg-label">
+              Share this group
+            </label>
+            <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+              {form.is_shared
+                ? "Visible to other authorized users."
+                : "Private to you and hidden from instructors unless shared later."}
+            </div>
           </div>
 
           <div className="d-flex justify-content-end gap-2 mt-2">

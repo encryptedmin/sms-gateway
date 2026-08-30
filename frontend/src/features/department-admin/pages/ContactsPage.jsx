@@ -67,8 +67,14 @@ export default function ContactsPage() {
     );
   }, [contacts, searchTerm]);
 
+  const manageableFilteredContacts = useMemo(
+    () => filteredContacts.filter((contact) => contact.can_manage !== false),
+    [filteredContacts]
+  );
+
   const allFilteredSelected =
-    filteredContacts.length > 0 && filteredContacts.every((contact) => selectedIds.has(contact.id));
+    manageableFilteredContacts.length > 0 &&
+    manageableFilteredContacts.every((contact) => selectedIds.has(contact.id));
 
   function toggleSelected(id) {
     setSelectedIds((prev) => {
@@ -86,9 +92,9 @@ export default function ContactsPage() {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (allFilteredSelected) {
-        filteredContacts.forEach((contact) => next.delete(contact.id));
+        manageableFilteredContacts.forEach((contact) => next.delete(contact.id));
       } else {
-        filteredContacts.forEach((contact) => next.add(contact.id));
+        manageableFilteredContacts.forEach((contact) => next.add(contact.id));
       }
       return next;
     });
@@ -150,10 +156,10 @@ export default function ContactsPage() {
     }
   }
 
-  async function handleImport(file, groupId) {
+  async function handleImport(file, groupId, isShared) {
     setIsSubmitting(true);
     try {
-      const summary = await importContactsCsv(file, groupId);
+      const summary = await importContactsCsv(file, groupId, isShared);
       await loadData();
       showToast("CSV imported.");
       return summary;
@@ -261,6 +267,7 @@ export default function ContactsPage() {
                   <th>Mobile</th>
                   <th>Course / Year / Section</th>
                   <th>Groups</th>
+                  <th>Visibility</th>
                   <th>Status</th>
                   <th></th>
                 </tr>
@@ -271,6 +278,7 @@ export default function ContactsPage() {
                     <td>
                       <input
                         type="checkbox"
+                        disabled={contact.can_manage === false}
                         checked={selectedIds.has(contact.id)}
                         onChange={() => toggleSelected(contact.id)}
                         aria-label={`Select ${contact.first_name} ${contact.last_name}`}
@@ -292,6 +300,20 @@ export default function ContactsPage() {
                       <span
                         className="d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill"
                         style={{
+                          background: contact.is_shared ? "var(--sg-signal-100)" : "var(--sg-surface-200)",
+                          color: contact.is_shared ? "var(--sg-signal-600)" : "var(--sg-text-500)",
+                          fontSize: "0.78rem",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <i className={`bi ${contact.is_shared ? "bi-people-fill" : "bi-lock-fill"}`}></i>
+                        {contact.is_shared ? "Shared" : "Private"}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        className="d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill"
+                        style={{
                           background: contact.active ? "var(--sg-signal-100)" : "var(--sg-surface-200)",
                           color: contact.active ? "var(--sg-signal-600)" : "var(--sg-text-500)",
                           fontSize: "0.78rem",
@@ -303,16 +325,20 @@ export default function ContactsPage() {
                     </td>
                     <td>
                       <div className="d-flex gap-2 justify-content-end">
-                        <button className="sg-icon-btn" onClick={() => openEditForm(contact)} aria-label="Edit contact">
-                          <i className="bi bi-pencil-fill"></i>
-                        </button>
-                        <button
-                          className="sg-icon-btn sg-icon-btn-danger"
-                          onClick={() => setContactPendingDelete(contact)}
-                          aria-label="Delete contact"
-                        >
-                          <i className="bi bi-trash-fill"></i>
-                        </button>
+                        {contact.can_manage !== false && (
+                          <>
+                            <button className="sg-icon-btn" onClick={() => openEditForm(contact)} aria-label="Edit contact">
+                              <i className="bi bi-pencil-fill"></i>
+                            </button>
+                            <button
+                              className="sg-icon-btn sg-icon-btn-danger"
+                              onClick={() => setContactPendingDelete(contact)}
+                              aria-label="Delete contact"
+                            >
+                              <i className="bi bi-trash-fill"></i>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

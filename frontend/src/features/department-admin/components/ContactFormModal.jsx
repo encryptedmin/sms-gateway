@@ -7,6 +7,7 @@ const EMPTY_FORM = {
   course: "",
   year_level: "",
   section: "",
+  is_shared: false,
   active: true,
 };
 
@@ -19,6 +20,7 @@ export default function ContactFormModal({ show, contact, groups, onSave, onCanc
   const courseId = useId();
   const yearId = useId();
   const sectionId = useId();
+  const sharedId = useId();
 
   const isEditing = Boolean(contact);
 
@@ -31,6 +33,7 @@ export default function ContactFormModal({ show, contact, groups, onSave, onCanc
         course: contact.course || "",
         year_level: contact.year_level || "",
         section: contact.section || "",
+        is_shared: Boolean(contact.is_shared),
         active: contact.active,
       });
       setSelectedGroupIds(contact.groups || []);
@@ -69,8 +72,13 @@ export default function ContactFormModal({ show, contact, groups, onSave, onCanc
   }
 
   return (
-    <div className="sg-modal-backdrop" onClick={onCancel}>
-      <div className="sg-modal-card" style={{ maxWidth: 560 }} onClick={(event) => event.stopPropagation()}>
+    <div className="sg-modal-backdrop">
+      <div
+        className="sg-modal-card"
+        role="dialog"
+        aria-modal="true"
+        style={{ maxWidth: 560 }}
+      >
         <h5 className="mb-1">{isEditing ? "Edit Contact" : "New Contact"}</h5>
         <p className="text-muted mb-3" style={{ fontSize: "0.88rem" }}>
           {isEditing ? "Update this contact's details." : "Add a single contact to the directory."}
@@ -196,6 +204,30 @@ export default function ContactFormModal({ show, contact, groups, onSave, onCanc
               </div>
             </div>
           )}
+
+          <div
+            className="form-check form-switch mt-3 p-3"
+            style={{ border: "1px solid var(--sg-surface-200)", borderRadius: 8 }}
+          >
+            <input
+              id={sharedId}
+              type="checkbox"
+              className="form-check-input"
+              checked={form.is_shared}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, is_shared: event.target.checked }))
+              }
+              disabled={isSubmitting}
+            />
+            <label htmlFor={sharedId} className="form-check-label sg-label">
+              Share this contact
+            </label>
+            <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+              {form.is_shared
+                ? "Visible to other authorized users."
+                : "Private to you unless included in a shared group."}
+            </div>
+          </div>
 
           <div className="d-flex justify-content-end gap-2 mt-3">
             <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onCancel} disabled={isSubmitting}>

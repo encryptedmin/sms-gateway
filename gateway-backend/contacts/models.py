@@ -20,6 +20,10 @@ class ContactGroup(models.Model):
         related_name="owned_contact_groups"
     )
 
+    is_shared = models.BooleanField(
+        default=False
+    )
+
     is_class = models.BooleanField(
         default=False
     )
@@ -89,6 +93,18 @@ class Contact(models.Model):
     groups = models.ManyToManyField(
         ContactGroup,
         blank=True
+    )
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="owned_contacts"
+    )
+
+    is_shared = models.BooleanField(
+        default=False
     )
 
     active = models.BooleanField(

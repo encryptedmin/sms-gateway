@@ -9,6 +9,8 @@ class ContactGroupSerializer(serializers.ModelSerializer):
 
     owner_name = serializers.SerializerMethodField()
 
+    can_manage = serializers.SerializerMethodField()
+
     contact_count = serializers.SerializerMethodField()
 
     adopted_groups = serializers.PrimaryKeyRelatedField(
@@ -25,6 +27,8 @@ class ContactGroupSerializer(serializers.ModelSerializer):
             "description",
             "owner",
             "owner_name",
+            "is_shared",
+            "can_manage",
             "is_class",
             "adopted_groups",
             "contact_count",
@@ -33,6 +37,7 @@ class ContactGroupSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "owner",
             "owner_name",
+            "can_manage",
             "contact_count",
             "created_at",
         ]
@@ -44,6 +49,26 @@ class ContactGroupSerializer(serializers.ModelSerializer):
 
         return None
 
+    def get_can_manage(self, obj):
+
+        request = self.context.get("request")
+
+        if not request:
+            return False
+
+        user = request.user
+
+        if user.role == "SUPER_ADMIN":
+            return True
+
+        if obj.owner_id == user.id:
+            return True
+
+        return (
+            user.role == "DEPARTMENT_ADMIN" and
+            obj.owner_id is None
+        )
+
     def get_contact_count(self, obj):
 
         return obj.get_all_contacts().count()
@@ -54,7 +79,7 @@ class ContactGroupSerializer(serializers.ModelSerializer):
 
         owner = (
             request.user
-            if (request and request.user.role == "INSTRUCTOR")
+            if request
             else None
         )
 
@@ -76,8 +101,47 @@ class ContactGroupSerializer(serializers.ModelSerializer):
 
         return value
 
+    def validate_adopted_groups(self, value):
+
+        request = self.context.get("request")
+
+        if not request:
+            return value
+
+        user = request.user
+
+        if user.role == "SUPER_ADMIN":
+            return value
+
+        allowed = ContactGroup.objects.filter(
+            owner=user
+        ) | ContactGroup.objects.filter(
+            is_shared=True
+        )
+
+        if user.role == "DEPARTMENT_ADMIN":
+            allowed = allowed | ContactGroup.objects.filter(
+                owner__isnull=True
+            )
+
+        allowed_ids = set(
+            allowed.values_list("id", flat=True)
+        )
+
+        for group in value:
+            if group.id not in allowed_ids:
+                raise serializers.ValidationError(
+                    "You can only adopt groups you own or groups that are shared."
+                )
+
+        return value
+
 
 class ContactSerializer(serializers.ModelSerializer):
+
+    owner_name = serializers.SerializerMethodField()
+
+    can_manage = serializers.SerializerMethodField()
 
     class Meta:
         model = Contact
@@ -90,12 +154,79 @@ class ContactSerializer(serializers.ModelSerializer):
             "year_level",
             "section",
             "groups",
+            "owner",
+            "owner_name",
+            "is_shared",
+            "can_manage",
             "active",
             "created_at",
         ]
         read_only_fields = [
+            "owner",
+            "owner_name",
+            "can_manage",
             "created_at",
         ]
+
+    def get_owner_name(self, obj):
+
+        if obj.owner:
+            return f"{obj.owner.first_name} {obj.owner.last_name}".strip()
+
+        return None
+
+    def get_can_manage(self, obj):
+
+        request = self.context.get("request")
+
+        if not request:
+            return False
+
+        user = request.user
+
+        if user.role == "SUPER_ADMIN":
+            return True
+
+        if obj.owner_id == user.id:
+            return True
+
+        return (
+            user.role == "DEPARTMENT_ADMIN" and
+            obj.owner_id is None
+        )
+
+    def validate_groups(self, value):
+
+        request = self.context.get("request")
+
+        if not request:
+            return value
+
+        user = request.user
+
+        if user.role == "SUPER_ADMIN":
+            return value
+
+        allowed = ContactGroup.objects.filter(
+            owner=user
+        )
+
+        if user.role == "DEPARTMENT_ADMIN":
+            allowed = allowed | ContactGroup.objects.filter(
+                owner__isnull=True
+            )
+
+        allowed_ids = set(
+            allowed.values_list("id", flat=True)
+        )
+
+        for group in value:
+            if group.id not in allowed_ids:
+                raise serializers.ValidationError(
+                    "You can only assign contacts to groups you manage."
+                )
+
+        return value
 
 
 class MessageTemplateSerializer(serializers.ModelSerializer):

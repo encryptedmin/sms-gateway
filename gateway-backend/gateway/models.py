@@ -1,11 +1,20 @@
 import secrets
+from datetime import date
+from datetime import timedelta
 from django.db import models
+from django.db.models import F
 from subscribers.models import Subscriber
 from plans.models import Plan
 from django.conf import settings
 
 
 class Subscription(models.Model):
+
+    # A "period" for a LIMITED plan's message_limit is a rolling window
+    # of this many days from period_start, not a calendar month — avoids
+    # 28/30/31-day edge cases. Adjust here if the board wants calendar-
+    # month billing instead.
+    PERIOD_LENGTH_DAYS = 30
 
     subscriber = models.ForeignKey(
         Subscriber,
@@ -28,6 +37,16 @@ class Subscription(models.Model):
         default="ACTIVE"
     )
 
+    messages_sent_this_period = models.PositiveIntegerField(
+        default=0,
+        help_text="Successful sends counted against the plan's message_limit, for the current period only."
+    )
+
+    period_start = models.DateField(
+        default=date.today,
+        help_text="Start of the current usage period. Rolls forward automatically once PERIOD_LENGTH_DAYS elapses."
+    )
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -36,6 +55,96 @@ class Subscription(models.Model):
                 name="one_active_subscription_per_subscriber"
             )
         ]
+
+    def _period_has_elapsed(self):
+
+        return date.today() >= self.period_start + timedelta(
+            days=self.PERIOD_LENGTH_DAYS
+        )
+
+    def reset_usage(self):
+        """
+        Zeroes out usage and starts a fresh period as of today. Called
+        whenever a subscriber is enrolled or switched onto a (possibly
+        new) plan, so they always start with their full quota.
+        """
+
+        self.messages_sent_this_period = 0
+        self.period_start = date.today()
+        self.save(
+            update_fields=[
+                "messages_sent_this_period",
+                "period_start",
+            ]
+        )
+
+    def current_usage(self):
+        """
+        Returns messages_sent_this_period for the CURRENT period,
+        transparently rolling the period forward (and zeroing usage) in
+        the DB first if it has elapsed. Read this instead of the raw
+        field whenever "how much have they used" matters.
+        """
+
+        if self._period_has_elapsed():
+
+            self.messages_sent_this_period = 0
+            self.period_start = date.today()
+            self.save(
+                update_fields=[
+                    "messages_sent_this_period",
+                    "period_start",
+                ]
+            )
+
+        return self.messages_sent_this_period
+
+    def has_quota_remaining(self):
+        """
+        True for UNLIMITED plans. For LIMITED plans, rolls the period
+        forward if needed, then checks the fresh count against the
+        plan's message_limit.
+        """
+
+        if self.plan.plan_type != "LIMITED":
+            return True
+
+        limit = self.plan.message_limit or 0
+
+        return self.current_usage() < limit
+
+    def record_successful_send(self):
+        """
+        Call once a message actually sends successfully. Only meaningful
+        for LIMITED plans — UNLIMITED plans don't track usage. Uses an
+        atomic DB-level increment (F expression) since two modems can
+        record a send at the same instant.
+        """
+
+        if self.plan.plan_type != "LIMITED":
+            return
+
+        if self._period_has_elapsed():
+
+            # Rare race: two sends could both observe an elapsed period
+            # and both reset-to-1 here, undercounting by one at the exact
+            # rollover boundary. Not worth the extra locking complexity
+            # for a LAN system sending a handful of messages at a time.
+
+            Subscription.objects.filter(
+                id=self.id
+            ).update(
+                period_start=date.today(),
+                messages_sent_this_period=1
+            )
+
+        else:
+
+            Subscription.objects.filter(
+                id=self.id
+            ).update(
+                messages_sent_this_period=F("messages_sent_this_period") + 1
+            )
 
     def __str__(self):
         return f"{self.subscriber}"
@@ -202,3 +311,4 @@ class SmsRetryPolicy(models.Model):
             f"base_backoff={self.base_backoff_seconds}s, "
             f"multiplier={self.backoff_multiplier}"
         )
+

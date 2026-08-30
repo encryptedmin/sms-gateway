@@ -23,8 +23,16 @@ export default function SubscriptionCell({ subscription, onEnroll, onChangePlan,
           {subscription.plan_name}
         </div>
         <div className="sg-cell-muted" style={{ fontSize: "0.78rem" }}>
-          {isLimited ? `${subscription.plan_message_limit} msgs / period` : "Unlimited"}
+          {isLimited
+            ? `${subscription.messages_sent_this_period} / ${subscription.plan_message_limit} msgs this period`
+            : "Unlimited"}
         </div>
+        {isLimited && subscription.messages_remaining === 0 && (
+          <div style={{ fontSize: "0.75rem", color: "var(--sg-danger-600, #c0392b)" }}>
+            <i className="bi bi-exclamation-circle-fill me-1"></i>
+            Limit reached
+          </div>
+        )}
       </div>
       <button className="sg-icon-btn" onClick={onChangePlan} aria-label="Change plan" title="Change plan" disabled={isBusy}>
         <i className="bi bi-arrow-repeat"></i>

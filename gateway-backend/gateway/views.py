@@ -9,6 +9,8 @@ from rest_framework.viewsets import ModelViewSet
 
 from contacts.models import Contact
 from contacts.models import ContactGroup
+from contacts.views import visible_contact_groups_for_user
+from contacts.views import visible_contacts_for_user
 
 from users.permissions import IsAdminRole
 from users.permissions import IsSubscriber
@@ -74,9 +76,14 @@ def _queue_sms(
     return log
 
 
-def _active_contacts_queryset():
+def _active_contacts_queryset(request_user=None):
 
-    return Contact.objects.filter(
+    queryset = Contact.objects.all()
+
+    if request_user:
+        queryset = visible_contacts_for_user(request_user)
+
+    return queryset.filter(
         active=True
     ).order_by(
         "first_name",
@@ -87,26 +94,12 @@ def _active_contacts_queryset():
 def _resolve_group_for_sending(group_id, request_user):
 
     try:
-        group = ContactGroup.objects.get(id=group_id)
+        group = visible_contact_groups_for_user(request_user).get(id=group_id)
     except ContactGroup.DoesNotExist:
         return None, Response(
             {"error": "group not found"},
             status=404
         )
-
-    if request_user.role == "INSTRUCTOR":
-
-        allowed_owner_ids = {None, request_user.id}
-
-        related_owner_ids = {group.owner_id} | set(
-            group.adopted_groups.values_list("owner_id", flat=True)
-        )
-
-        if not related_owner_ids.issubset(allowed_owner_ids):
-            return None, Response(
-                {"error": "you do not have access to this group"},
-                status=403
-            )
 
     return group, None
 
@@ -177,18 +170,32 @@ def send_sms(request):
             status=403
         )
 
-    has_active_subscription = Subscription.objects.filter(
+    subscription = Subscription.objects.select_related(
+        "plan"
+    ).filter(
         subscriber=subscriber,
         status="ACTIVE"
-    ).exists()
+    ).first()
 
-    if not has_active_subscription:
+    if not subscription:
 
         return Response(
             {
                 "error": "no active subscription for this account"
             },
             status=403
+        )
+
+    if not subscription.has_quota_remaining():
+
+        return Response(
+            {
+                "error": (
+                    "Monthly message limit reached for this plan. "
+                    "It resets automatically at the start of the next period."
+                )
+            },
+            status=429
         )
 
     log = _queue_sms(
@@ -223,7 +230,7 @@ def department_send_sms(request):
             status=400
         )
 
-    contacts = _active_contacts_queryset()
+    contacts = _active_contacts_queryset(request.user)
     target_label = "contacts"
 
     if target_type == "contact":

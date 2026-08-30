@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from .models import SmsLog
 from .models import SmsRetryPolicy
+from .models import Subscription
 from .services import Sim800Service
 
 logger = get_task_logger(__name__)
@@ -185,6 +186,20 @@ def process_sms(self, log_id):
         log.sent_at = timezone.now()
         log.error_message = ""
         log.save()
+
+        if log.subscriber_id:
+
+            # ITE-originated sends (department_send_sms) have no
+            # subscriber and aren't metered — only API-key sends
+            # against a subscriber's plan count toward a quota.
+
+            subscription = Subscription.objects.filter(
+                subscriber_id=log.subscriber_id,
+                status="ACTIVE"
+            ).select_related("plan").first()
+
+            if subscription:
+                subscription.record_successful_send()
 
         return True
 

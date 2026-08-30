@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-export default function GroupMembersModal({ show, group, contacts, onToggleMember, onClose, busyContactId }) {
+export default function GroupMembersModal({ show, group, contacts, onToggleMember, onClose, busyContactId, adoptedContacts = [] }) {
   const [searchTerm, setSearchTerm] = useState("");
 
   const filteredContacts = useMemo(() => {
@@ -67,6 +67,34 @@ export default function GroupMembersModal({ show, group, contacts, onToggleMembe
             })
           )}
         </div>
+
+        {adoptedContacts.length > 0 && (
+          <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--sg-surface-200)" }}>
+            <div className="sg-cell-muted mb-2" style={{ fontSize: "0.8rem" }}>
+              <i className="bi bi-diagram-3 me-1"></i>
+              Also included via adopted groups (manage membership in the source group)
+            </div>
+            <div style={{ maxHeight: 180, overflowY: "auto" }}>
+              {adoptedContacts.map(({ contact, sourceGroupName }) => (
+                <div
+                  key={contact.id}
+                  className="d-flex align-items-center justify-content-between py-2 px-1"
+                  style={{ borderBottom: "1px solid var(--sg-surface-200)", opacity: 0.75 }}
+                >
+                  <div>
+                    <div className="sg-cell-primary" style={{ fontSize: "0.9rem" }}>
+                      {contact.first_name} {contact.last_name}
+                    </div>
+                    <div className="sg-cell-muted">{contact.mobile_number}</div>
+                  </div>
+                  <span className="sg-cell-muted" style={{ fontSize: "0.75rem" }}>
+                    via {sourceGroupName}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="d-flex justify-content-end mt-3">
           <button className="btn sg-submit-btn btn-sm" onClick={onClose}>

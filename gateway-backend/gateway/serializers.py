@@ -145,6 +145,19 @@ class SubscriptionSerializer(serializers.ModelSerializer):
         source="plan.message_limit",
         read_only=True
     )
+    messages_remaining = serializers.SerializerMethodField()
+
+    def get_messages_remaining(self, obj):
+
+        if obj.plan.plan_type != "LIMITED":
+            return None
+
+        limit = obj.plan.message_limit or 0
+
+        return max(
+            0,
+            limit - obj.current_usage()
+        )
 
     def validate(self, attrs):
 
@@ -184,6 +197,28 @@ class SubscriptionSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    def update(self, instance, validated_data):
+
+        plan_changed = (
+            "plan" in validated_data
+            and validated_data["plan"].id != instance.plan_id
+        )
+
+        instance = super().update(
+            instance,
+            validated_data
+        )
+
+        if plan_changed:
+
+            # A different plan means a different (or no) cap — usage
+            # against the old plan's limit isn't meaningful anymore, so
+            # they start the new plan with a full, fresh quota.
+
+            instance.reset_usage()
+
+        return instance
+
     class Meta:
         model = Subscription
         fields = [
@@ -194,5 +229,12 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             "plan_name",
             "plan_type",
             "plan_message_limit",
+            "messages_sent_this_period",
+            "messages_remaining",
+            "period_start",
             "status",
+        ]
+        read_only_fields = [
+            "messages_sent_this_period",
+            "period_start",
         ]

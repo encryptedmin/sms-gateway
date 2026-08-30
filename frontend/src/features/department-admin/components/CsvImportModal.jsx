@@ -3,9 +3,11 @@ import { useId, useState } from "react";
 export default function CsvImportModal({ show, groups, onImport, onClose, isSubmitting }) {
   const [file, setFile] = useState(null);
   const [groupId, setGroupId] = useState("");
+  const [isShared, setIsShared] = useState(false);
   const [result, setResult] = useState(null);
   const fileId = useId();
   const groupSelectId = useId();
+  const sharedId = useId();
 
   if (!show) {
     return null;
@@ -14,6 +16,7 @@ export default function CsvImportModal({ show, groups, onImport, onClose, isSubm
   function handleClose() {
     setFile(null);
     setGroupId("");
+    setIsShared(false);
     setResult(null);
     onClose();
   }
@@ -22,15 +25,15 @@ export default function CsvImportModal({ show, groups, onImport, onClose, isSubm
     event.preventDefault();
     if (!file) return;
 
-    const summary = await onImport(file, groupId || null);
+    const summary = await onImport(file, groupId || null, isShared);
     if (summary) {
       setResult(summary);
     }
   }
 
   return (
-    <div className="sg-modal-backdrop" onClick={handleClose}>
-      <div className="sg-modal-card" onClick={(event) => event.stopPropagation()}>
+    <div className="sg-modal-backdrop">
+      <div className="sg-modal-card" role="dialog" aria-modal="true">
         <h5 className="mb-1">Import Contacts from CSV</h5>
         <p className="text-muted mb-3" style={{ fontSize: "0.88rem" }}>
           Columns recognized: <code>first_name</code>, <code>last_name</code>,{" "}
@@ -90,6 +93,28 @@ export default function CsvImportModal({ show, groups, onImport, onClose, isSubm
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div
+              className="form-check form-switch mb-3 p-3"
+              style={{ border: "1px solid var(--sg-surface-200)", borderRadius: 8 }}
+            >
+              <input
+                id={sharedId}
+                type="checkbox"
+                className="form-check-input"
+                checked={isShared}
+                onChange={(event) => setIsShared(event.target.checked)}
+                disabled={isSubmitting}
+              />
+              <label htmlFor={sharedId} className="form-check-label sg-label">
+                Share imported contacts
+              </label>
+              <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+                {isShared
+                  ? "Every created or updated contact in this import will be shared."
+                  : "Imported contacts remain private to you by default."}
+              </div>
             </div>
 
             <div className="d-flex justify-content-end gap-2 mt-2">

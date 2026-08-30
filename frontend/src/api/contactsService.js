@@ -29,9 +29,10 @@ export async function bulkDeactivateContacts(ids) {
   return response.data;
 }
 
-export async function importContactsCsv(file, groupId) {
+export async function importContactsCsv(file, groupId, isShared = false) {
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("is_shared", isShared ? "true" : "false");
   if (groupId) {
     formData.append("group_id", groupId);
   }

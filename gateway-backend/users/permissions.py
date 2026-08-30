@@ -98,5 +98,31 @@ class CanManageContactGroup(BasePermission):
             return True
         if request.user.role == "INSTRUCTOR":
             return obj.owner_id == request.user.id
+        if request.user.role == "DEPARTMENT_ADMIN":
+            return obj.owner_id in [
+                request.user.id,
+                None,
+            ]
         return True
+
+
+class CanManageContact(BasePermission):
+
+    def has_permission(self, request, view):
+        return CanSendSms().has_permission(request, view)
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in SAFE_METHODS:
+            return True
+
+        if request.user.role == "SUPER_ADMIN":
+            return True
+
+        if obj.owner_id == request.user.id:
+            return True
+
+        return (
+            request.user.role == "DEPARTMENT_ADMIN" and
+            obj.owner_id is None
+        )
         

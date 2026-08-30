@@ -47,7 +47,7 @@ export default function ContactGroupsPage() {
     }
   }
 
-  const memberCountByGroupId = useMemo(() => {
+  const directMemberCountByGroupId = useMemo(() => {
     const map = new Map();
     contacts.forEach((contact) => {
       contact.groups.forEach((groupId) => {
@@ -57,11 +57,61 @@ export default function ContactGroupsPage() {
     return map;
   }, [contacts]);
 
+  // Mirrors ContactGroup.get_all_contacts() on the backend: a group's real
+  // membership (the one actually used when sending) is its own direct
+  // contacts UNION every adopted group's contacts, deduplicated — not
+  // just what was added directly to this group.
+  const totalMembersByGroupId = useMemo(() => {
+    const map = new Map();
+
+    groups.forEach((group) => {
+      const memberIds = new Set();
+
+      contacts.forEach((contact) => {
+        if (contact.groups.includes(group.id)) {
+          memberIds.add(contact.id);
+        }
+      });
+
+      (group.adopted_groups || []).forEach((adoptedId) => {
+        contacts.forEach((contact) => {
+          if (contact.groups.includes(adoptedId)) {
+            memberIds.add(contact.id);
+          }
+        });
+      });
+
+      map.set(group.id, memberIds);
+    });
+
+    return map;
+  }, [groups, contacts]);
+
   const groupNameById = useMemo(() => {
     const map = new Map();
     groups.forEach((group) => map.set(group.id, group.name));
     return map;
   }, [groups]);
+
+  const adoptedContactsForMembersModal = useMemo(() => {
+    if (!groupForMembers) return [];
+
+    const rows = [];
+    const seenContactIds = new Set();
+
+    (groupForMembers.adopted_groups || []).forEach((adoptedId) => {
+      const sourceGroupName = groupNameById.get(adoptedId) || "Adopted group";
+
+      contacts.forEach((contact) => {
+        if (contact.groups.includes(adoptedId) && !seenContactIds.has(contact.id)) {
+          seenContactIds.add(contact.id);
+          rows.push({ contact, sourceGroupName });
+        }
+      });
+    });
+
+    return rows;
+  }, [groupForMembers, contacts, groupNameById]);
 
   function isOwnedByMe(group) {
     return group.owner === user?.id;
@@ -220,7 +270,26 @@ export default function ContactGroupsPage() {
                           {mine ? "Mine" : "Shared"}
                         </span>
                       </td>
-                      <td>{memberCountByGroupId.get(group.id) || 0}</td>
+                      <td>
+                        {(() => {
+                          const totalCount = totalMembersByGroupId.get(group.id)?.size || 0;
+                          const directCount = directMemberCountByGroupId.get(group.id) || 0;
+                          const adoptedCount = totalCount - directCount;
+
+                          return (
+                            <div>
+                              <div className="sg-cell-primary" style={{ fontSize: "0.9rem" }}>
+                                {totalCount}
+                              </div>
+                              {adoptedCount > 0 && (
+                                <div className="sg-cell-muted" style={{ fontSize: "0.75rem" }}>
+                                  {directCount} added, {adoptedCount} via adopted
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td className="sg-cell-muted">
                         {adoptedNames.length > 0 ? adoptedNames.join(", ") : "—"}
                       </td>
@@ -275,6 +344,7 @@ export default function ContactGroupsPage() {
         onToggleMember={handleToggleMember}
         onClose={() => setGroupForMembers(null)}
         busyContactId={busyContactId}
+        adoptedContacts={adoptedContactsForMembersModal}
       />
 
       <AdoptGroupsModal

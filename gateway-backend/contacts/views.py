@@ -1,6 +1,7 @@
 import csv
 import io
 from django.db.models import Q
+from users.permissions import CanManageContact
 from users.permissions import CanManageContactGroup
 from rest_framework import status
 from rest_framework.decorators import action
@@ -17,6 +18,115 @@ from .serializers import ContactSerializer
 from .serializers import MessageTemplateSerializer
 
 
+def visible_contact_groups_for_user(user):
+
+    queryset = ContactGroup.objects.all()
+
+    if user.role == "SUPER_ADMIN":
+        return queryset
+
+    if user.role == "DEPARTMENT_ADMIN":
+        return queryset.filter(
+            Q(owner=user) |
+            Q(owner__isnull=True) |
+            Q(is_shared=True)
+        )
+
+    if user.role == "INSTRUCTOR":
+        return queryset.filter(
+            Q(owner=user) |
+            Q(is_shared=True)
+        )
+
+    return queryset.none()
+
+
+def manageable_contact_groups_for_user(user):
+
+    queryset = ContactGroup.objects.all()
+
+    if user.role == "SUPER_ADMIN":
+        return queryset
+
+    if user.role == "DEPARTMENT_ADMIN":
+        return queryset.filter(
+            Q(owner=user) |
+            Q(owner__isnull=True)
+        )
+
+    if user.role == "INSTRUCTOR":
+        return queryset.filter(
+            owner=user
+        )
+
+    return queryset.none()
+
+
+def visible_contacts_for_user(user):
+
+    queryset = Contact.objects.prefetch_related("groups").all()
+
+    if user.role == "SUPER_ADMIN":
+        return queryset
+
+    if user.role == "DEPARTMENT_ADMIN":
+        return queryset.filter(
+            Q(owner=user) |
+            Q(owner__isnull=True) |
+            Q(is_shared=True) |
+            Q(groups__owner=user) |
+            Q(groups__owner__isnull=True) |
+            Q(groups__is_shared=True)
+        )
+
+    if user.role == "INSTRUCTOR":
+        return queryset.filter(
+            Q(owner=user) |
+            Q(is_shared=True) |
+            Q(groups__owner=user) |
+            Q(groups__is_shared=True)
+        )
+
+    return queryset.none()
+
+
+def manageable_contacts_for_user(user):
+
+    queryset = Contact.objects.all()
+
+    if user.role == "SUPER_ADMIN":
+        return queryset
+
+    if user.role == "DEPARTMENT_ADMIN":
+        return queryset.filter(
+            Q(owner=user) |
+            Q(owner__isnull=True)
+        )
+
+    if user.role == "INSTRUCTOR":
+        return queryset.filter(
+            owner=user
+        )
+
+    return queryset.none()
+
+
+def parse_bool(value, default=False):
+
+    if value is None:
+        return default
+
+    if isinstance(value, bool):
+        return value
+
+    return str(value).strip().lower() in [
+        "1",
+        "true",
+        "yes",
+        "on",
+    ]
+
+
 class ContactGroupViewSet(ModelViewSet):
 
     serializer_class = ContactGroupSerializer
@@ -28,9 +138,9 @@ class ContactGroupViewSet(ModelViewSet):
 
         user = self.request.user
 
-        queryset = ContactGroup.objects.all().order_by("name")
+        queryset = visible_contact_groups_for_user(user).order_by("name")
 
-        if user.role == "INSTRUCTOR":
+        if False:
             # instructors can see their own groups plus shared
             # department-wide groups (owner is null) so they can adopt
             # them into a class — but editing is still locked down by
@@ -48,13 +158,7 @@ class ContactGroupViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
 
-        owner = (
-            self.request.user
-            if self.request.user.role == "INSTRUCTOR"
-            else None
-        )
-
-        serializer.save(owner=owner)
+        serializer.save(owner=self.request.user)
 
 
 class ContactViewSet(ModelViewSet):
@@ -65,12 +169,12 @@ class ContactViewSet(ModelViewSet):
     )
     serializer_class = ContactSerializer
     permission_classes = [
-        CanSendSms
+        CanManageContact
     ]
 
     def get_queryset(self):
 
-        queryset = Contact.objects.prefetch_related("groups").all().order_by(
+        queryset = visible_contacts_for_user(self.request.user).order_by(
             "first_name",
             "last_name",
         )
@@ -110,10 +214,15 @@ class ContactViewSet(ModelViewSet):
             # instructor — lets an instructor's "Contacts" page show only
             # people relevant to them, not the whole department directory.
             queryset = queryset.filter(
-                groups__owner=self.request.user
+                Q(owner=self.request.user) |
+                Q(groups__owner=self.request.user)
             )
 
         return queryset.distinct()
+
+    def perform_create(self, serializer):
+
+        serializer.save(owner=self.request.user)
 
     @action(
         detail=False,
@@ -140,7 +249,7 @@ class ContactViewSet(ModelViewSet):
         if group_id:
 
             try:
-                group = ContactGroup.objects.get(
+                group = manageable_contact_groups_for_user(request.user).get(
                     id=group_id
                 )
 
@@ -183,31 +292,55 @@ class ContactViewSet(ModelViewSet):
                 skipped += 1
                 continue
 
+            contact = Contact.objects.filter(
+                mobile_number=mobile_number
+            ).first()
+
+            if contact and not manageable_contacts_for_user(
+                request.user
+            ).filter(id=contact.id).exists():
+                skipped += 1
+                continue
+
+            defaults = {
+                "first_name": first_name,
+                "last_name": (
+                    row.get("last_name")
+                    or ""
+                ).strip(),
+                "course": (
+                    row.get("course")
+                    or ""
+                ).strip(),
+                "year_level": (
+                    row.get("year_level")
+                    or row.get("year")
+                    or ""
+                ).strip(),
+                "section": (
+                    row.get("section")
+                    or row.get("class_section")
+                    or ""
+                ).strip(),
+                "is_shared": parse_bool(
+                    request.data.get("is_shared"),
+                    False
+                ),
+                "active": True,
+            }
+
             contact, was_created = Contact.objects.update_or_create(
                 mobile_number=mobile_number,
-                defaults={
-                    "first_name": first_name,
-                    "last_name": (
-                        row.get("last_name")
-                        or ""
-                    ).strip(),
-                    "course": (
-                        row.get("course")
-                        or ""
-                    ).strip(),
-                    "year_level": (
-                        row.get("year_level")
-                        or row.get("year")
-                        or ""
-                    ).strip(),
-                    "section": (
-                        row.get("section")
-                        or row.get("class_section")
-                        or ""
-                    ).strip(),
-                    "active": True,
-                }
+                defaults=defaults
             )
+
+            if was_created:
+                contact.owner = request.user
+                contact.save(
+                    update_fields=[
+                        "owner",
+                    ]
+                )
 
             if group:
                 contact.groups.add(
@@ -247,7 +380,9 @@ class ContactViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        deleted_count, _ = Contact.objects.filter(
+        deleted_count, _ = manageable_contacts_for_user(
+            request.user
+        ).filter(
             id__in=ids
         ).delete()
 
@@ -276,7 +411,9 @@ class ContactViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        updated = Contact.objects.filter(
+        updated = manageable_contacts_for_user(
+            request.user
+        ).filter(
             id__in=ids
         ).update(
             active=False

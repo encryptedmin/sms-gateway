@@ -146,6 +146,7 @@ export default function ContactGroupsPage() {
                   <th>Group</th>
                   <th>Description</th>
                   <th>Members</th>
+                  <th>Visibility</th>
                   <th>Created</th>
                   <th></th>
                 </tr>
