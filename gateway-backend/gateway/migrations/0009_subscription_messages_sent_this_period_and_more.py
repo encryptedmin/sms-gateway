@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('gateway', '0008_merge_20260823_1526'),
+        ('gateway', '0007_subscription_one_active_subscription_per_subscriber'),
     ]
 
     operations = [

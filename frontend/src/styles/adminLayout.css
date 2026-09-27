@@ -1,7 +1,9 @@
 .sg-admin-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   background: var(--sg-surface-50);
+  overflow: hidden;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -20,6 +22,9 @@
   top: 0;
   bottom: 0;
   left: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
   transform: translateX(-100%);
   transition: transform 0.22s ease;
   z-index: 1100;
@@ -32,6 +37,8 @@
 @media (min-width: 992px) {
   .sg-sidebar {
     position: sticky;
+    top: 0;
+    bottom: auto;
     transform: none;
   }
 }
@@ -69,6 +76,8 @@
   flex-direction: column;
   gap: 0.3rem;
   flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sg-nav-link {
@@ -104,6 +113,7 @@
   border-top: 1px solid var(--sg-line);
   padding-top: 1rem;
   margin-top: 1rem;
+  flex-shrink: 0;
 }
 
 .sg-sidebar-user {
@@ -146,6 +156,11 @@
 .sg-admin-main {
   flex-grow: 1;
   min-width: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .sg-admin-topbar {
@@ -159,6 +174,7 @@
   position: sticky;
   top: 0;
   z-index: 900;
+  flex-shrink: 0;
 }
 
 .sg-mobile-nav-toggle {

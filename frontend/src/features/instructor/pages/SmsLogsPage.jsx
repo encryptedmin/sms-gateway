@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { listSmsLogs, getDashboardStats } from "../../../api/smsLogsService";
+import { listSmsLogs, getDashboardStats, retrySmsLog } from "../../../api/smsLogsService";
 import { useToast } from "../../../context/ToastContext";
 import { formatDateTime } from "../../../utils/formatters";
 import StatCard from "../../../components/StatCard";
@@ -17,6 +17,7 @@ export default function SmsLogsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const intervalRef = useRef(null);
+  const [retryingIds, setRetryingIds] = useState(new Set());
 
   useEffect(() => {
     loadLogs({ silent: false });
@@ -44,6 +45,24 @@ export default function SmsLogsPage() {
       if (!silent) showToast("Couldn't load SMS logs.", "error");
     } finally {
       if (!silent) setIsLoading(false);
+    }
+  }
+
+  async function handleRetry(id) {
+    setRetryingIds((prev) => new Set(prev).add(id));
+    try {
+      const updated = await retrySmsLog(id);
+      setLogs((prev) => prev.map((log) => (log.id === id ? { ...log, ...updated } : log)));
+      showToast("Message re-queued for sending.", "success");
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      showToast(detail || "Couldn't retry this message.", "error");
+    } finally {
+      setRetryingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   }
 
@@ -154,8 +173,38 @@ export default function SmsLogsPage() {
                       {log.message.length > 70 ? `${log.message.slice(0, 70)}…` : log.message}
                       {log.status === "FAILED" && log.error_message && (
                         <div className="text-danger" style={{ fontSize: "0.76rem" }}>
+                          {log.failure_category_label && (
+                            <strong>{log.failure_category_label}: </strong>
+                          )}
                           {log.error_message}
                         </div>
+                      )}
+                      {log.status === "FAILED" && (
+                        log.can_retry ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger mt-1 py-0 px-2"
+                            style={{ fontSize: "0.72rem" }}
+                            disabled={retryingIds.has(log.id)}
+                            onClick={() => handleRetry(log.id)}
+                          >
+                            {retryingIds.has(log.id) ? (
+                              <>
+                                <span className="spinner-border spinner-border-sm me-1" style={{ width: 10, height: 10 }} />
+                                Retrying…
+                              </>
+                            ) : (
+                              <>
+                                <i className="bi bi-arrow-clockwise me-1"></i>
+                                Retry
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <div className="sg-cell-muted" style={{ fontSize: "0.7rem" }}>
+                            No retry attempts left
+                          </div>
+                        )
                       )}
                     </td>
                     <td>

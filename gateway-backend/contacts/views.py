@@ -1,6 +1,9 @@
 import csv
 import io
 from django.db.models import Q
+
+from core.phone import normalize_phone_number
+
 from users.permissions import CanManageContact
 from users.permissions import CanManageContactGroup
 from rest_framework import status
@@ -271,10 +274,11 @@ class ContactViewSet(ModelViewSet):
         created = 0
         updated = 0
         skipped = 0
+        invalid = 0
 
         for row in reader:
 
-            mobile_number = (
+            raw_mobile_number = (
                 row.get("mobile_number")
                 or row.get("phone")
                 or row.get("contact_number")
@@ -288,8 +292,20 @@ class ContactViewSet(ModelViewSet):
                 or ""
             ).strip()
 
-            if not mobile_number or not first_name:
+            if not raw_mobile_number or not first_name:
                 skipped += 1
+                continue
+
+            try:
+                mobile_number = normalize_phone_number(raw_mobile_number)
+            except ValueError:
+                # Malformed number (letters, stray punctuation, wrong
+                # length, etc) — counted separately from "skipped" so an
+                # admin reviewing the import result can tell "this row
+                # was missing data" apart from "this row had a bad
+                # number", rather than silently letting it through to
+                # Sim800Service, which has no escaping around this value.
+                invalid += 1
                 continue
 
             contact = Contact.objects.filter(
@@ -357,6 +373,7 @@ class ContactViewSet(ModelViewSet):
                 "created": created,
                 "updated": updated,
                 "skipped": skipped,
+                "invalid": invalid,
             }
         )
 

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { getDashboardStats } from "../../../api/smsLogsService";
 import { useToast } from "../../../context/ToastContext";
 import StatCard from "../../../components/StatCard";
+import ModemStatusPanel from "../../../components/ModemStatusPanel";
 
 export default function OverviewPage() {
   const { showToast } = useToast();
@@ -66,6 +67,12 @@ export default function OverviewPage() {
           </div>
         </div>
       )}
+
+      <div className="row g-3 mb-4">
+        <div className="col-lg-6">
+          <ModemStatusPanel />
+        </div>
+      </div>
 
       <div className="row g-3">
         {quickLinks.map((link) => (

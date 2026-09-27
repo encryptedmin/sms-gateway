@@ -12,6 +12,8 @@ from contacts.models import ContactGroup
 from contacts.views import visible_contact_groups_for_user
 from contacts.views import visible_contacts_for_user
 
+from core.phone import normalize_phone_number
+
 from users.permissions import IsAdminRole
 from users.permissions import IsSubscriber
 from users.permissions import CanSendSms
@@ -21,13 +23,16 @@ from .models import ApiKey
 from .models import SmsLog
 from .models import Subscription
 from .models import SmsRetryPolicy
+from .models import ModemStatus
 
 from .serializers import ApiKeySerializer
 from .serializers import SmsLogSerializer
 from .serializers import SubscriptionSerializer
 from .serializers import SmsRetryPolicySerializer
 
+from .services import Sim800Service
 from .tasks import process_sms
+from .tasks import _redis_client
 
 
 def _extract_api_key(request):
@@ -69,9 +74,27 @@ def _queue_sms(
         sent_by=sent_by
     )
 
-    process_sms.delay(
-        log.id
-    )
+    try:
+
+        process_sms.delay(
+            log.id
+        )
+
+    except Exception as ex:
+
+        # If Celery/Redis can't even accept the task (broker briefly
+        # unreachable, etc), the row above would otherwise sit at
+        # PENDING forever with no task ever having been created to
+        # retry it — nothing would ever touch it again. Mark it FAILED
+        # immediately instead, with a reason, so it shows up for a
+        # manual resend rather than silently vanishing into a
+        # never-processed PENDING row.
+
+        log.status = "FAILED"
+        log.error_message = f"Could not queue for sending: {ex}"
+        log.response_message = log.error_message
+        log.failure_category = "UNKNOWN"
+        log.save()
 
     return log
 
@@ -130,6 +153,24 @@ def send_sms(request):
         return Response(
             {
                 "error": "recipient required"
+            },
+            status=400
+        )
+
+    try:
+        recipient = normalize_phone_number(recipient)
+    except ValueError as ex:
+
+        # This is a hard requirement, not just cosmetic validation:
+        # Sim800Service.send_sms interpolates `recipient` directly into
+        # an AT+CMGS="<recipient>" modem command with no escaping, so an
+        # unvalidated value here could inject arbitrary AT commands into
+        # the modem session. Reject before it ever reaches a queued
+        # SmsLog / Sim800Service.
+
+        return Response(
+            {
+                "error": str(ex)
             },
             status=400
         )
@@ -366,6 +407,7 @@ class SmsLogViewSet(ModelViewSet):
         "get",
         "head",
         "options",
+        "post",
     ]
 
     def get_queryset(self):
@@ -395,6 +437,99 @@ class SmsLogViewSet(ModelViewSet):
             )
 
         return queryset
+
+    def get_serializer_context(self):
+
+        context = super().get_serializer_context()
+
+        # Fetched once per request/response rather than once per row —
+        # SmsRetryPolicy is a singleton table, so this avoids an N+1
+        # query when the serializer computes can_retry for a whole page
+        # of logs.
+        context["retry_policy"] = SmsRetryPolicy.current()
+
+        return context
+
+    @action(
+        detail=True,
+        methods=["post"]
+    )
+    def retry(self, request, pk=None):
+        """
+        Manually re-queues a single FAILED send. There's no automatic
+        retry anymore (see gateway/tasks.py) — a failed message stays
+        FAILED, with its reason, until this endpoint is called, which
+        is exactly what the Retry button in the SMS Logs UI does.
+
+        get_object() below reuses get_queryset()'s scoping, so this
+        naturally enforces the same permissions as the list view (an
+        INSTRUCTOR can't retry someone else's send — it 404s, same as
+        trying to view it would).
+        """
+
+        log = self.get_object()
+
+        if log.status != "FAILED":
+
+            return Response(
+                {"detail": "Only failed messages can be retried."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        policy = SmsRetryPolicy.current()
+
+        if log.attempts > policy.max_retries:
+
+            return Response(
+                {
+                    "detail": (
+                        "This message has already used its "
+                        f"{policy.max_retries} allowed retry attempt(s)."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        log.status = "PENDING"
+        log.error_message = ""
+        log.failure_category = ""
+        log.save(
+            update_fields=[
+                "status",
+                "error_message",
+                "failure_category",
+            ]
+        )
+
+        try:
+
+            process_sms.delay(
+                log.id
+            )
+
+        except Exception as ex:
+
+            # Same reasoning as _queue_sms in send_sms/department_send_sms
+            # below: if Celery/Redis can't even accept the task, don't
+            # leave this row sitting at PENDING with no task ever
+            # created to act on it — go straight back to FAILED with a
+            # reason so the Retry button is available again.
+
+            log.status = "FAILED"
+            log.error_message = f"Could not queue retry: {ex}"
+            log.response_message = log.error_message
+            log.failure_category = "UNKNOWN"
+            log.save()
+
+            return Response(
+                {"detail": log.error_message},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+
+        return Response(
+            self.get_serializer(log).data,
+            status=status.HTTP_202_ACCEPTED
+        )
 
 
 class SubscriptionViewSet(ModelViewSet):
@@ -566,4 +701,137 @@ def retry_policy(request):
 
     return Response(
         SmsRetryPolicySerializer(policy).data
+    )
+
+
+MODEM_STATUS_COOLDOWN_SECONDS = 30
+MODEM_STATUS_COOLDOWN_KEY = "modem_status:cooldown"
+
+
+def _serialize_modem_statuses():
+
+    rows = ModemStatus.objects.all().order_by("port")
+
+    return [
+        {
+            "port": row.port,
+            "online": row.is_online,
+            "signal_bucket": row.signal_bucket,
+            "signal_csq": row.signal_csq,
+            "registration_state": row.registration_state,
+            "registration_detail": row.registration_detail,
+            "last_checked": row.last_checked,
+            "last_checked_by": (
+                row.last_checked_by.username
+                if row.last_checked_by_id else None
+            ),
+        }
+        for row in rows
+    ]
+
+
+@api_view(["GET"])
+@permission_classes([IsAdminRole])
+def modem_status(request):
+    """
+    Read-only — returns whatever was last recorded, never touches the
+    hardware. Safe to call on every page load/refresh.
+    """
+
+    return Response(
+        {
+            "cooldown_seconds": MODEM_STATUS_COOLDOWN_SECONDS,
+            "modems": _serialize_modem_statuses(),
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminRole])
+def modem_status_check(request):
+    """
+    The deliberate "check now" action — scans every serial port on the
+    machine, confirms which ones are actually a SIM800 modem (not just
+    "some serial device exists here"), and records online/offline +
+    signal for each. Works regardless of which USB port or COM number
+    a modem enumerates as. Global cooldown (not per-user): the SIM
+    doesn't care which admin is asking, so one admin checking shouldn't
+    let another immediately check again and double up on hardware
+    traffic.
+    """
+
+    client = _redis_client()
+
+    ttl = client.ttl(MODEM_STATUS_COOLDOWN_KEY)
+
+    if ttl and ttl > 0:
+
+        return Response(
+            {
+                "error": "Status check is on cooldown.",
+                "retry_after_seconds": ttl,
+                "cooldown_seconds": MODEM_STATUS_COOLDOWN_SECONDS,
+                "modems": _serialize_modem_statuses(),
+            },
+            status=429
+        )
+
+    acquired = client.set(
+        MODEM_STATUS_COOLDOWN_KEY,
+        "1",
+        nx=True,
+        ex=MODEM_STATUS_COOLDOWN_SECONDS
+    )
+
+    if not acquired:
+
+        # Lost a race with another admin's simultaneous click — treat
+        # it the same as an active cooldown rather than double-checking.
+
+        ttl = client.ttl(MODEM_STATUS_COOLDOWN_KEY) or MODEM_STATUS_COOLDOWN_SECONDS
+
+        return Response(
+            {
+                "error": "Status check is on cooldown.",
+                "retry_after_seconds": ttl,
+                "cooldown_seconds": MODEM_STATUS_COOLDOWN_SECONDS,
+                "modems": _serialize_modem_statuses(),
+            },
+            status=429
+        )
+
+    probe = Sim800Service()
+    discovered_ports = probe.discover_all_modem_ports()
+
+    # Drop stale rows for ports that no longer have a SIM800 on them —
+    # e.g. a modem that was moved to a different USB port since the
+    # last check. Without this, an old port would keep showing up
+    # (and keep getting round-robin'd to) even though nothing's there
+    # anymore.
+    ModemStatus.objects.exclude(
+        port__in=discovered_ports
+    ).delete()
+
+    for port in discovered_ports:
+
+        result = probe.check_status(port)
+        signal_csq = result["signal_csq"]
+
+        ModemStatus.objects.update_or_create(
+            port=port,
+            defaults={
+                "is_online": result["online"],
+                "signal_csq": signal_csq,
+                "signal_bucket": ModemStatus.bucket_for_csq(signal_csq),
+                "registration_state": result["registration_state"],
+                "registration_detail": result["registration_detail"],
+                "last_checked_by": request.user,
+            }
+        )
+
+    return Response(
+        {
+            "cooldown_seconds": MODEM_STATUS_COOLDOWN_SECONDS,
+            "modems": _serialize_modem_statuses(),
+        }
     )

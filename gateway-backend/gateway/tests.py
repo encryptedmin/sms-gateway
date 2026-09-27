@@ -141,3 +141,33 @@ class GatewayApiTests(TestCase):
                 id=group.id
             ).exists()
         )
+
+    @patch("gateway.views.process_sms.delay")
+    def test_send_sms_rejects_malformed_recipient(self, delay):
+        """
+        Sim800Service.send_sms interpolates the recipient directly into
+        an AT+CMGS="<recipient>" modem command with no escaping. A
+        recipient carrying a quote/CR could inject arbitrary AT commands
+        into the modem session, so this must be rejected before a
+        SmsLog is ever queued.
+        """
+
+        response = self.client.post(
+            "/api/send-sms/",
+            {
+                "recipient": '09123456789"; AT+CFUN=1;\r',
+                "message": "hi",
+            },
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {self.api_key.api_key}",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            400
+        )
+        self.assertEqual(
+            SmsLog.objects.count(),
+            0
+        )
+        delay.assert_not_called()

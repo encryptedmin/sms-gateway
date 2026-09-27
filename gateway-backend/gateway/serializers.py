@@ -4,6 +4,7 @@ from .models import ApiKey
 from .models import SmsLog
 from .models import Subscription
 from .models import SmsRetryPolicy
+from .sms_errors import classify_failure
 
 
 class ApiKeySerializer(serializers.ModelSerializer):
@@ -49,6 +50,49 @@ class SmsLogSerializer(serializers.ModelSerializer):
 
         return f"{obj.sent_by.first_name} {obj.sent_by.last_name}".strip()
 
+    failure_category_label = serializers.SerializerMethodField()
+
+    def get_failure_category_label(self, obj):
+        """
+        Human label for obj.failure_category ("Likely no credit / barred",
+        etc). Falls back to re-classifying error_message on the fly for
+        rows saved before failure_category existed, so old FAILED rows
+        still show a reason instead of going blank.
+        """
+
+        if obj.failure_category:
+            return obj.get_failure_category_display()
+
+        if obj.status == "FAILED" and obj.error_message:
+
+            category, _ = classify_failure(obj.error_message)
+
+            return dict(SmsLog._meta.get_field("failure_category").choices).get(
+                category,
+                ""
+            )
+
+        return ""
+
+    can_retry = serializers.SerializerMethodField()
+
+    def get_can_retry(self, obj):
+        """
+        Whether the Retry button should be usable for this row. Reads
+        the SmsRetryPolicy passed in via the viewset's
+        get_serializer_context() (fetched once per request/list rather
+        than once per row); falls back to a fresh lookup if this
+        serializer is ever used somewhere that doesn't set that
+        context.
+        """
+
+        if obj.status != "FAILED":
+            return False
+
+        policy = self.context.get("retry_policy") or SmsRetryPolicy.current()
+
+        return obj.attempts <= policy.max_retries
+
     class Meta:
         model = SmsLog
         fields = [
@@ -66,6 +110,9 @@ class SmsLogSerializer(serializers.ModelSerializer):
             "response_message",
             "attempts",
             "modem_port",
+            "failure_category",
+            "failure_category_label",
+            "can_retry",
         ]
         read_only_fields = fields
 

@@ -3,6 +3,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import RoleRedirect from "./routes/RoleRedirect";
+import PageTitleUpdater from "./components/PageTitleUpdater";
 import LoginPage from "./features/auth/LoginPage";
 
 import SuperAdminLayout from "./features/super-admin/SuperAdminLayout";
@@ -38,6 +39,7 @@ export default function App() {
     <BrowserRouter>
       <ToastProvider>
         <AuthProvider>
+          <PageTitleUpdater />
           <Routes>
             <Route path="/" element={<RoleRedirect />} />
             <Route path="/login" element={<LoginPage />} />

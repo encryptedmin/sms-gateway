@@ -7,6 +7,8 @@ from subscribers.models import Subscriber
 from plans.models import Plan
 from django.conf import settings
 
+from .sms_errors import FAILURE_CATEGORY_CHOICES
+
 
 class Subscription(models.Model):
 
@@ -245,30 +247,50 @@ class SmsLog(models.Model):
         help_text="The modem/COM port the most recent attempt was dispatched to."
     )
 
+    failure_category = models.CharField(
+        max_length=30,
+        choices=FAILURE_CATEGORY_CHOICES,
+        blank=True,
+        help_text=(
+            "Coarse reason this attempt failed (modem offline, weak "
+            "signal, likely no credit, etc), derived from the modem's "
+            "own error code where one was available. Blank while "
+            "PENDING/SENT, or if a send failed before any modem "
+            "response could be classified."
+        )
+    )
+
     def __str__(self):
         return self.recipient
 
 
 class SmsRetryPolicy(models.Model):
     """
-    Singleton row controlling how gateway.tasks.process_sms retries a
-    failed send. Editable by SUPER_ADMIN via /api/retry-policy/ so retry
-    behaviour can be tuned without a redeploy.
+    Singleton row controlling how many times a FAILED SmsLog can be
+    manually retried. Editable by SUPER_ADMIN via /api/retry-policy/.
+
+    Retries are no longer automatic — see gateway/tasks.py. A failed
+    send now stays FAILED, with its reason, until someone explicitly
+    clicks Retry in the SMS Logs UI (SmsLogViewSet.retry() in
+    views.py), which re-queues process_sms for that one message. This
+    model just caps how many times that button can be used per
+    message, so max_retries below means "manual retry attempts", not
+    an automatic countdown.
     """
 
     max_retries = models.PositiveIntegerField(
         default=3,
-        help_text="Number of retry attempts after the first failed send, before marking FAILED."
+        help_text="Number of manual retry attempts allowed after the first failed send, before the Retry button stops working for that message."
     )
 
     base_backoff_seconds = models.PositiveIntegerField(
         default=30,
-        help_text="Delay before the first retry, in seconds."
+        help_text="Unused now that retries are manual — kept for backward compatibility with existing rows/serializers."
     )
 
     backoff_multiplier = models.FloatField(
         default=2.0,
-        help_text="Each subsequent retry waits base_backoff_seconds * (multiplier ^ attempt_number)."
+        help_text="Unused now that retries are manual — kept for backward compatibility with existing rows/serializers."
     )
 
     updated_at = models.DateTimeField(
@@ -311,4 +333,96 @@ class SmsRetryPolicy(models.Model):
             f"base_backoff={self.base_backoff_seconds}s, "
             f"multiplier={self.backoff_multiplier}"
         )
+
+
+class ModemStatus(models.Model):
+    """
+    Last-known status for one configured modem port. Only ever written
+    by a deliberate admin-triggered check (see gateway/views.py
+    modem_status_check) — never polled automatically — so this table
+    is what GET /api/modem-status/ reads to show something on page
+    load without touching the hardware.
+    """
+
+    SIGNAL_BUCKET = [
+        ("UNKNOWN", "UNKNOWN"),
+        ("WEAK", "WEAK"),
+        ("GOOD", "GOOD"),
+        ("EXCELLENT", "EXCELLENT"),
+    ]
+
+    port = models.CharField(
+        max_length=20,
+        unique=True
+    )
+
+    is_online = models.BooleanField(
+        default=False
+    )
+
+    # is_online collapses AT+CREG? down to a yes/no, which hides *why* a
+    # modem is offline. A modem can have perfectly good signal_csq and
+    # still be offline here — CSQ is a raw RF measurement independent of
+    # whether the SIM has actually completed network registration. These
+    # two fields carry that "why" through to the admin UI instead of
+    # just showing a flat "Offline" next to a signal bar and leaving
+    # someone to wonder if that's a bug.
+    REGISTRATION_STATE = [
+        ("REGISTERED_HOME", "REGISTERED_HOME"),
+        ("REGISTERED_ROAMING", "REGISTERED_ROAMING"),
+        ("SEARCHING", "SEARCHING"),
+        ("DENIED", "DENIED"),
+        ("NOT_SEARCHING", "NOT_SEARCHING"),
+        ("UNKNOWN", "UNKNOWN"),
+        ("NO_RESPONSE", "NO_RESPONSE"),
+    ]
+
+    registration_state = models.CharField(
+        max_length=20,
+        choices=REGISTRATION_STATE,
+        default="NO_RESPONSE",
+        help_text="Raw AT+CREG? status, decoded — explains *why* is_online is what it is."
+    )
+
+    registration_detail = models.TextField(
+        blank=True,
+        help_text="Human-readable explanation of registration_state for the admin UI."
+    )
+
+    signal_csq = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Raw AT+CSQ value (0-31). Null if unknown/unreadable."
+    )
+
+    signal_bucket = models.CharField(
+        max_length=20,
+        choices=SIGNAL_BUCKET,
+        default="UNKNOWN"
+    )
+
+    last_checked = models.DateTimeField(
+        auto_now=True
+    )
+
+    last_checked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    @staticmethod
+    def bucket_for_csq(csq):
+
+        if csq is None:
+            return "UNKNOWN"
+        if csq <= 9:
+            return "WEAK"
+        if csq <= 19:
+            return "GOOD"
+        return "EXCELLENT"
+
+    def __str__(self):
+        return f"{self.port}: {'online' if self.is_online else 'offline'} ({self.signal_bucket})"
 

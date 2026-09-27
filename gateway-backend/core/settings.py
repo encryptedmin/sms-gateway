@@ -45,7 +45,6 @@ INSTALLED_APPS = [
     "subscribers",
     "plans",
     "gateway",
-    "logs",
     "contacts",
 ]
 
@@ -158,6 +157,41 @@ CELERY_TASK_ACKS_LATE = True
 # work spread evenly across the two modem threads.
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
+# --- Broker visibility timeout ---------------------------------------
+#
+# Bug fix: previously this had no override, so with
+# CELERY_TASK_ACKS_LATE=True, Celery's Redis transport fell back to its
+# default visibility_timeout of 3600 seconds (1 hour). If a task is
+# ever lost without being acked (worker killed, process crashed,
+# machine slept), Redis won't consider that message safe to redeliver
+# to another worker until that hour elapses — which lines up exactly
+# with messages being reported stuck at PENDING "for over an hour".
+#
+# This setting is a broker/Kombu-level concern, independent of which
+# execution pool the worker runs — unlike CELERY_TASK_TIME_LIMIT below,
+# it's not something Celery quietly ignores under --pool=threads, so
+# it's a real, working part of the fix.
+#
+# NOTE: this project deliberately does NOT set CELERY_TASK_TIME_LIMIT /
+# CELERY_TASK_SOFT_TIME_LIMIT. Those are enforced by celery.concurrency.
+# prefork's AsynPool (real per-process soft/hard timers) — but this
+# worker runs `--pool=threads` (prefork needs os.fork(), unavailable on
+# Windows), and celery.concurrency.thread.TaskPool has no timeout
+# machinery whatsoever, on any OS: it's a bare ThreadPoolExecutor.submit()
+# with signal_safe=False. Setting those two options here would silently
+# do nothing but look like a safety net that doesn't exist. The actual
+# hard-timeout enforcement for a wedged modem call lives in
+# gateway/modem_subprocess.py instead, which can forcibly kill a stuck
+# operation because it's a real OS process, not a thread.
+
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    # Comfortably above MODEM_SEND_HARD_TIMEOUT_SECONDS (see tasks.py)
+    # so a task that's still legitimately running is never redelivered
+    # as a duplicate, but nowhere near the 1-hour default — a truly
+    # lost task now comes back in minutes, not an hour.
+    "visibility_timeout": 600,
+}
+
 # Run the worker with: celery -A core worker --pool=threads --concurrency=2 -l info
 # --pool=threads (not the default prefork pool) because prefork relies on
 # os.fork(), which isn't available on Windows. --concurrency=2 matches
@@ -172,3 +206,15 @@ SMS_MODEM_PORTS = [
 SMS_MODEM_BAUDRATE = 115200
 
 SMS_DEV_MODE = False
+
+# Hard wall-clock cap on a single send attempt (across however many
+# candidate modems Sim800Service.send_sms tries internally), enforced
+# via a killable child process — see gateway/modem_subprocess.py for
+# why this can't just be a Celery task time limit on this worker pool.
+# Sizing: a send can legitimately spend up to
+# RECIPIENT_LOCK_WAIT_TIMEOUT_SECONDS=40s (tasks.py) waiting its turn,
+# then per candidate port up to PORT_LOCK_ACQUIRE_TIMEOUT=15s +
+# several AT commands (~10s timeout each) + RESPONSE_TIMEOUT=30s
+# (services.py). 240s comfortably covers that worst case across both
+# configured modems with margin.
+SMS_SEND_HARD_TIMEOUT_SECONDS = 240

@@ -7,9 +7,12 @@ from django.conf import settings
 from django.utils import timezone
 
 from .models import SmsLog
-from .models import SmsRetryPolicy
 from .models import Subscription
+from .modem_subprocess import send_sms_with_hard_timeout
 from .services import Sim800Service
+from .sms_errors import RECIPIENT_BUSY
+from .sms_errors import UNKNOWN
+from .sms_errors import classify_failure
 
 logger = get_task_logger(__name__)
 
@@ -95,6 +98,33 @@ def _pick_modem_port(log_id):
     return detected[log_id % len(detected)]
 
 
+def _mark_failed(
+    log,
+    response,
+    category
+):
+    """
+    Writes a terminal FAILED status with the reason attached. There is
+    no automatic retry anymore — see SmsLogViewSet.retry() in views.py
+    for the manual flow this feeds: a FAILED row with error_message/
+    failure_category populated is exactly what the frontend's Retry
+    button reads and acts on. This is the one place that writes FAILED,
+    so every failure path (a clean send failure, a recipient-lock
+    timeout, or the catch-all safety net below) ends up in the same
+    guaranteed-to-be-saved final state — a message can never be left
+    sitting at PENDING forever with no failure ever recorded.
+    """
+
+    log.response_message = response
+    log.error_message = response
+    log.failure_category = category
+    log.attempts = max(log.attempts, 1)
+    log.status = "FAILED"
+    log.save()
+
+    return False
+
+
 @shared_task(bind=True)
 def process_sms(self, log_id):
 
@@ -113,113 +143,140 @@ def process_sms(self, log_id):
 
         return False
 
-    policy = SmsRetryPolicy.current()
-    port = _pick_modem_port(log_id)
-
-    log.attempts += 1
-    log.modem_port = port or ""
-    log.status = "RETRYING" if self.request.retries else "PENDING"
-    log.save(
-        update_fields=[
-            "attempts",
-            "modem_port",
-            "status",
-        ]
-    )
-
-    success = False
-    response = ""
-    client = None
-    got_lock = False
-
+    # Everything below is wrapped so that NO exception — a DB hiccup, a
+    # bug we didn't anticipate — can leave `log` sitting at PENDING
+    # forever with no attempt recorded. A single call to this task is
+    # always exactly one send attempt, ending in either SENT or FAILED;
+    # nothing in between, and nothing silent. Retrying a FAILED message
+    # is now a deliberate action (SmsLogViewSet.retry() re-queues this
+    # same task), not something that happens on its own in the
+    # background — which is also why there's no more RETRYING status
+    # or backoff scheduling to reason about here.
     try:
 
-        client = _redis_client()
-        got_lock = _acquire_recipient_lock(
-            client,
-            log.recipient
+        port = _pick_modem_port(log_id)
+
+        log.attempts += 1
+        log.modem_port = port or ""
+        log.status = "PENDING"
+        log.save(
+            update_fields=[
+                "attempts",
+                "modem_port",
+                "status",
+            ]
         )
 
-        if not got_lock:
+        success = False
+        response = ""
+        category = ""
+        client = None
+        got_lock = False
 
-            response = (
-                f"Timed out waiting to send to {log.recipient} "
-                "(already in progress on another modem)"
+        try:
+
+            client = _redis_client()
+            got_lock = _acquire_recipient_lock(
+                client,
+                log.recipient
             )
 
-        else:
+            if not got_lock:
 
-            modem = Sim800Service(
-                port=port
-            )
+                response = (
+                    f"Timed out waiting to send to {log.recipient} "
+                    "(already in progress on another modem)"
+                )
+                category = RECIPIENT_BUSY
 
-            success, response, used_port = modem.send_sms(
-                log.recipient,
-                log.message
-            )
+            else:
 
-            if used_port:
-                log.modem_port = used_port
+                # Runs in a killable child process rather than calling
+                # Sim800Service.send_sms() directly in this thread — see
+                # modem_subprocess.py for why: this worker runs
+                # --pool=threads (Windows has no os.fork() for prefork),
+                # and celery's thread pool enforces no time limit at
+                # all, on any OS, so a wedged pyserial call would
+                # otherwise occupy this thread's single prefetch slot
+                # forever with nothing to stop it.
+                success, response, used_port = send_sms_with_hard_timeout(
+                    port,
+                    log.recipient,
+                    log.message,
+                    settings.SMS_SEND_HARD_TIMEOUT_SECONDS
+                )
+
+                if used_port:
+                    log.modem_port = used_port
+
+        except Exception as ex:
+
+            # Unexpected infra error (Redis unreachable, an exception
+            # send_sms_with_hard_timeout didn't already normalize, etc)
+            # — treat it as a failed attempt instead of crashing the
+            # worker.
+
+            success = False
+            response = str(ex) or ex.__class__.__name__
+
+        finally:
+
+            if got_lock and client is not None:
+                _release_recipient_lock(client, log.recipient)
+
+        if not response:
+            response = "No modem response returned"
+
+        if success:
+
+            log.response_message = response
+            log.status = "SENT"
+            log.sent_at = timezone.now()
+            log.error_message = ""
+            log.failure_category = ""
+            log.save()
+
+            if log.subscriber_id:
+
+                # ITE-originated sends (department_send_sms) have no
+                # subscriber and aren't metered — only API-key sends
+                # against a subscriber's plan count toward a quota.
+
+                subscription = Subscription.objects.filter(
+                    subscriber_id=log.subscriber_id,
+                    status="ACTIVE"
+                ).select_related("plan").first()
+
+                if subscription:
+                    subscription.record_successful_send()
+
+            return True
+
+        if not category:
+            category, _ = classify_failure(response)
+
+        return _mark_failed(
+            log,
+            response,
+            category
+        )
 
     except Exception as ex:
 
-        # Unexpected infra error (Redis unreachable, an exception
-        # Sim800Service didn't already normalize, etc) — treat it as a
-        # failed attempt instead of crashing the worker.
+        # Absolute last resort: something outside every guard above
+        # (e.g. a database error saving `log` itself) blew up. Still
+        # record a real FAILED status rather than silently dropping the
+        # task, and log loudly so it's visible in worker logs instead
+        # of just vanishing.
 
-        success = False
-        response = str(ex) or ex.__class__.__name__
-
-    finally:
-
-        if got_lock and client is not None:
-            _release_recipient_lock(client, log.recipient)
-
-    if not response:
-        response = "No modem response returned"
-
-    log.response_message = response
-
-    if success:
-
-        log.status = "SENT"
-        log.sent_at = timezone.now()
-        log.error_message = ""
-        log.save()
-
-        if log.subscriber_id:
-
-            # ITE-originated sends (department_send_sms) have no
-            # subscriber and aren't metered — only API-key sends
-            # against a subscriber's plan count toward a quota.
-
-            subscription = Subscription.objects.filter(
-                subscriber_id=log.subscriber_id,
-                status="ACTIVE"
-            ).select_related("plan").first()
-
-            if subscription:
-                subscription.record_successful_send()
-
-        return True
-
-    log.error_message = response
-
-    if self.request.retries < policy.max_retries:
-
-        log.status = "RETRYING"
-        log.save()
-
-        countdown = policy.backoff_seconds(
-            self.request.retries + 1
+        logger.exception(
+            "process_sms(%s) hit an unhandled error outside the normal "
+            "failure path",
+            log_id
         )
 
-        raise self.retry(
-            countdown=countdown,
-            max_retries=policy.max_retries
+        return _mark_failed(
+            log,
+            f"Unexpected error: {ex}",
+            UNKNOWN
         )
-
-    log.status = "FAILED"
-    log.save()
-
-    return False

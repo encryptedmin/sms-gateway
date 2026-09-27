@@ -157,6 +157,20 @@ export default function ContactGroupsPage() {
                     <td className="sg-cell-primary">{group.name}</td>
                     <td className="sg-cell-muted">{group.description || "—"}</td>
                     <td>{memberCountByGroupId.get(group.id) || 0}</td>
+                    <td>
+                      <span
+                        className="d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill"
+                        style={{
+                          background: group.is_shared ? "var(--sg-signal-100)" : "var(--sg-surface-200)",
+                          color: group.is_shared ? "var(--sg-signal-600)" : "var(--sg-text-500)",
+                          fontSize: "0.78rem",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <i className={`bi ${group.is_shared ? "bi-people-fill" : "bi-lock-fill"}`}></i>
+                        {group.is_shared ? "Shared" : "Private"}
+                      </span>
+                    </td>
                     <td className="sg-cell-muted">{formatDate(group.created_at)}</td>
                     <td>
                       <div className="d-flex gap-2 justify-content-end">

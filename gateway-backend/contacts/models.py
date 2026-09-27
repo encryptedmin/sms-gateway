@@ -1,5 +1,23 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.conf import settings
+
+from core.phone import normalize_phone_number
+
+
+def validate_mobile_number(value):
+    """
+    Model-level backstop so a bad number can't get in even via a route
+    that bypasses ContactSerializer (Django admin, a future management
+    command, direct ORM use, etc). The serializer is still what
+    normalizes the value that actually gets saved; this just refuses to
+    let anything invalid through at the database layer.
+    """
+
+    try:
+        normalize_phone_number(value)
+    except ValueError as ex:
+        raise ValidationError(str(ex))
 
 
 class ContactGroup(models.Model):
@@ -72,7 +90,8 @@ class Contact(models.Model):
 
     mobile_number = models.CharField(
         max_length=20,
-        unique=True
+        unique=True,
+        validators=[validate_mobile_number]
     )
 
     course = models.CharField(

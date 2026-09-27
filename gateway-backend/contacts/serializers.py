@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from core.phone import normalize_phone_number
+
 from .models import Contact
 from .models import ContactGroup
 from .models import MessageTemplate
@@ -194,6 +196,13 @@ class ContactSerializer(serializers.ModelSerializer):
             user.role == "DEPARTMENT_ADMIN" and
             obj.owner_id is None
         )
+
+    def validate_mobile_number(self, value):
+
+        try:
+            return normalize_phone_number(value)
+        except ValueError as ex:
+            raise serializers.ValidationError(str(ex))
 
     def validate_groups(self, value):
 

@@ -4,7 +4,8 @@ from .models import (
     Subscription,
     ApiKey,
     SmsLog,
-    SmsRetryPolicy
+    SmsRetryPolicy,
+    ModemStatus
 )
 
 
@@ -40,3 +41,4 @@ class SmsLogAdmin(admin.ModelAdmin):
 
 admin.site.register(Subscription)
 admin.site.register(SmsRetryPolicy)
+admin.site.register(ModemStatus)

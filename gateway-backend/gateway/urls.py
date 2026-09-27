@@ -15,7 +15,9 @@ from .views import (
     SubscriptionViewSet,
     send_sms,
     department_send_sms,
-    retry_policy
+    retry_policy,
+    modem_status,
+    modem_status_check
 )
 
 from .dashboard_views import (
@@ -84,6 +86,16 @@ urlpatterns = [
     path(
         "retry-policy/",
         retry_policy
+    ),
+
+    path(
+        "modem-status/",
+        modem_status
+    ),
+
+    path(
+        "modem-status/check/",
+        modem_status_check
     ),
 
 ] + router.urls
