@@ -1,5 +1,22 @@
 # SMS Gateway
 
+## Run everything with Docker
+
+```powershell
+docker compose up -d --build
+```
+
+This starts Redis, the Django backend, the Celery worker, and the frontend
+(nginx, serving the built app and proxying `/api`). Open
+`http://${SMS_SITE_HOST}` (default `http://sms.ite`); set `SMS_SITE_PORT` in
+`.env` if port 80 is busy. The SQLite database lives in the `backend-data`
+volume, seeded from `gateway-backend/db.sqlite3` on first start.
+
+Docker on Windows cannot see COM ports, so the SIM800 modems are not reachable
+from the containers unless USB is forwarded to WSL2 (usbipd-win) and the
+`/dev/ttyUSB*` devices are added to the `worker` service. For real modem use,
+keep running the Celery worker natively as described below.
+
 ## Local address: `http://sms.ite`
 
 The frontend uses the ITE-branded local address `http://sms.ite` rather than
