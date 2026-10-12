@@ -65,7 +65,7 @@ export default function SendSmsPage() {
             <div>
               <h2 className="sg-panel-title">Send SMS</h2>
               <div className="sg-panel-subtitle">
-                Message a single contact, or one of your classes/groups.
+                Message one or more contacts, or one of your classes/groups.
               </div>
             </div>
           </div>

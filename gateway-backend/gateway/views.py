@@ -274,21 +274,49 @@ def department_send_sms(request):
     contacts = _active_contacts_queryset(request.user)
     target_label = "contacts"
 
-    if target_type == "contact":
-        contact_id = request.data.get("contact_id")
+    if target_type in [
+        "contact",
+        "contacts",
+    ]:
+        contact_ids = request.data.get("contact_ids")
 
-        if not contact_id:
+        # Keep accepting the original single-contact payload for existing
+        # clients while the dashboard now sends a list of selected contacts.
+        if contact_ids is None:
+            contact_id = request.data.get("contact_id")
+            contact_ids = [
+                contact_id,
+            ] if contact_id else []
+
+        if not isinstance(contact_ids, list) or not contact_ids:
             return Response(
                 {
-                    "error": "contact_id required"
+                    "error": "contact_ids must be a non-empty list"
+                },
+                status=400
+            )
+
+        try:
+            contact_ids = [
+                int(contact_id)
+                for contact_id in contact_ids
+            ]
+        except (TypeError, ValueError):
+            return Response(
+                {
+                    "error": "contact_ids must contain valid contact IDs"
                 },
                 status=400
             )
 
         contacts = contacts.filter(
-            id=contact_id
+            id__in=contact_ids
         )
-        target_label = "contact"
+        target_label = (
+            "contact"
+            if len(set(contact_ids)) == 1
+            else "selected contacts"
+        )
 
     elif target_type == "year":
         year_level = request.data.get("year_level")

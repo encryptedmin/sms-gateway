@@ -36,7 +36,7 @@ export default function OverviewPage() {
     { to: "/department-admin/contacts", icon: "bi-person-lines-fill", title: "Contacts", desc: "Add contacts manually or import a CSV." },
     { to: "/department-admin/groups", icon: "bi-diagram-3-fill", title: "Contact Groups", desc: "Organize contacts into classes and sections." },
     { to: "/department-admin/templates", icon: "bi-file-earmark-text-fill", title: "Message Templates", desc: "Reusable messages for common announcements." },
-    { to: "/department-admin/send", icon: "bi-send-fill", title: "Send SMS", desc: "Message a contact or a whole group." },
+    { to: "/department-admin/send", icon: "bi-send-fill", title: "Send SMS", desc: "Message selected contacts or a whole group." },
   ];
 
   return (

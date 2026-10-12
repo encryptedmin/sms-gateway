@@ -2,13 +2,13 @@ import { useId, useMemo, useState } from "react";
 import SendEstimateModal from "../../../components/SendEstimateModal";
 
 const TARGET_TYPES = [
-  { value: "contact", label: "Single contact", icon: "bi-person-fill" },
+  { value: "contact", label: "Contacts", icon: "bi-person-fill" },
   { value: "class", label: "Contact group", icon: "bi-people-fill" },
 ];
 
 export default function SendSmsForm({ contacts, groups, templates, onSend, isSubmitting }) {
   const [targetType, setTargetType] = useState("contact");
-  const [contactId, setContactId] = useState("");
+  const [contactIds, setContactIds] = useState([]);
   const [contactSearch, setContactSearch] = useState("");
   const [groupId, setGroupId] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -37,10 +37,19 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
     [groups, groupId]
   );
 
-  const selectedContact = useMemo(
-    () => contacts.find((contact) => String(contact.id) === String(contactId)),
-    [contacts, contactId]
+  const selectedContacts = useMemo(
+    () => contacts.filter((contact) => contactIds.includes(String(contact.id))),
+    [contacts, contactIds]
   );
+
+  function toggleContact(contactId) {
+    const id = String(contactId);
+    setContactIds((current) =>
+      current.includes(id)
+        ? current.filter((selectedId) => selectedId !== id)
+        : [...current, id]
+    );
+  }
 
   function handleTemplateChange(event) {
     const id = event.target.value;
@@ -53,14 +62,14 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
 
   function buildPayload() {
     if (targetType === "contact") {
-      return { target_type: "contact", message, contact_id: contactId };
+      return { target_type: "contacts", message, contact_ids: contactIds };
     }
     return { target_type: "class", message, group_id: groupId };
   }
 
   function isValid() {
     if (!message.trim()) return false;
-    if (targetType === "contact") return Boolean(contactId);
+    if (targetType === "contact") return contactIds.length > 0;
     return Boolean(groupId);
   }
 
@@ -69,10 +78,12 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
     if (!isValid()) return;
 
     const recipientCount = targetType === "contact"
-      ? 1
+      ? selectedContacts.length
       : Number(selectedGroup?.active_contact_count ?? selectedGroup?.contact_count ?? 0);
     const targetLabel = targetType === "contact"
-      ? `${selectedContact?.first_name || ""} ${selectedContact?.last_name || ""}`.trim()
+      ? selectedContacts.length === 1
+        ? `${selectedContacts[0].first_name} ${selectedContacts[0].last_name}`.trim()
+        : `${selectedContacts.length} selected contacts`
       : selectedGroup?.name || "Selected group";
 
     setPendingSend({
@@ -90,7 +101,7 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
       setPendingSend(null);
       setMessage("");
       setTemplateId("");
-      setContactId("");
+      setContactIds([]);
       setContactSearch("");
       setGroupId("");
     }
@@ -125,7 +136,7 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
       {targetType === "contact" ? (
         <div className="mb-3">
           <label htmlFor={contactSearchId} className="form-label sg-label">
-            Find a contact
+            Select contacts
           </label>
           <input
             id={contactSearchId}
@@ -136,6 +147,21 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
             onChange={(event) => setContactSearch(event.target.value)}
             disabled={isSubmitting}
           />
+          {contactIds.length > 0 && (
+            <div className="d-flex align-items-center justify-content-between mb-2">
+              <span className="sg-cell-muted">
+                {contactIds.length} {contactIds.length === 1 ? "contact" : "contacts"} selected
+              </span>
+              <button
+                type="button"
+                className="btn btn-link btn-sm p-0"
+                onClick={() => setContactIds([])}
+                disabled={isSubmitting}
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
           <div className="sg-panel" style={{ maxHeight: 200, overflowY: "auto" }}>
             {filteredContacts.length === 0 ? (
               <div className="sg-table-empty">No contacts found.</div>
@@ -147,10 +173,9 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
                   style={{ borderBottom: "1px solid var(--sg-surface-200)", cursor: "pointer" }}
                 >
                   <input
-                    type="radio"
-                    name="contact"
-                    checked={String(contactId) === String(contact.id)}
-                    onChange={() => setContactId(contact.id)}
+                    type="checkbox"
+                    checked={contactIds.includes(String(contact.id))}
+                    onChange={() => toggleContact(contact.id)}
                     disabled={isSubmitting}
                   />
                   <div>

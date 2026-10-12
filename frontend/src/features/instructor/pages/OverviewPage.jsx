@@ -37,7 +37,7 @@ export default function OverviewPage() {
     { to: "/instructor/contacts", icon: "bi-person-lines-fill", title: "My Contacts", desc: "Add contacts manually or import a CSV." },
     { to: "/instructor/groups", icon: "bi-diagram-3-fill", title: "My Groups", desc: "Manage your classes and adopt shared groups." },
     { to: "/instructor/templates", icon: "bi-file-earmark-text-fill", title: "Message Templates", desc: "Reusable messages for common announcements." },
-    { to: "/instructor/send", icon: "bi-send-fill", title: "Send SMS", desc: "Message a contact or one of your classes." },
+    { to: "/instructor/send", icon: "bi-send-fill", title: "Send SMS", desc: "Message selected contacts or one of your classes." },
   ];
 
   return (

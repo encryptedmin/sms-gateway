@@ -315,6 +315,71 @@ class InstructorSmsIsolationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("modems", response.data)
 
+    @patch("gateway.views.process_sms.delay")
+    def test_instructor_can_send_to_multiple_selected_contacts(self, delay):
+        first_contact = Contact.objects.create(
+            first_name="First",
+            mobile_number="09171111111",
+            owner=self.instructor,
+        )
+        second_contact = Contact.objects.create(
+            first_name="Second",
+            mobile_number="09172222222",
+            owner=self.instructor,
+        )
+        inaccessible_contact = Contact.objects.create(
+            first_name="Private",
+            mobile_number="09173333333",
+            owner=self.other_instructor,
+        )
+
+        response = self.client.post(
+            "/api/department/send-sms/",
+            {
+                "target_type": "contacts",
+                "contact_ids": [
+                    first_contact.id,
+                    second_contact.id,
+                    inaccessible_contact.id,
+                ],
+                "message": "Class is suspended.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contacts"], 2)
+        self.assertEqual(response.data["target"], "selected contacts")
+        self.assertSetEqual(
+            set(
+                SmsLog.objects.filter(
+                    message="Class is suspended."
+                ).values_list("recipient", flat=True)
+            ),
+            {
+                first_contact.mobile_number,
+                second_contact.mobile_number,
+            },
+        )
+        self.assertEqual(delay.call_count, 2)
+
+    def test_multiple_contact_send_requires_a_non_empty_id_list(self):
+        response = self.client.post(
+            "/api/department/send-sms/",
+            {
+                "target_type": "contacts",
+                "contact_ids": [],
+                "message": "Class is suspended.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data["error"],
+            "contact_ids must be a non-empty list",
+        )
+
     @patch("gateway.views._redis_client")
     @patch("gateway.views.Sim800Service")
     def test_automatic_signal_refresh_uses_signal_only_probe(
