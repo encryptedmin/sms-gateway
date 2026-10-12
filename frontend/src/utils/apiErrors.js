@@ -1,3 +1,11 @@
+// First DRF field error for `field` (e.g. "email"), or "" when there is none.
+export function extractFieldError(error, field) {
+  const value = error?.response?.data?.[field];
+  if (Array.isArray(value) && value.length) return String(value[0]);
+  if (typeof value === "string") return value;
+  return "";
+}
+
 export function extractApiError(error, fallback = "The request could not be completed.") {
   const data = error?.response?.data;
   if (!data) return fallback;

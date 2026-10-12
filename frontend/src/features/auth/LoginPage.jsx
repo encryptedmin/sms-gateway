@@ -29,18 +29,18 @@ export default function LoginPage() {
     return <Navigate to={getHomeRouteForRole(user.role)} replace />;
   }
 
-  async function handleSubmit({ username, password }) {
+  async function handleSubmit({ email, password }) {
     setErrorMessage("");
 
-    if (!username.trim() || !password) {
-      setErrorMessage("Enter both your username and password.");
+    if (!email.trim() || !password) {
+      setErrorMessage("Enter both your email and password.");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const user = await login(username.trim(), password);
+      const user = await login(email.trim(), password);
       const homeRoute = getHomeRouteForRole(user.role);
 
       const requestedPath = location.state?.from?.pathname;

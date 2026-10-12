@@ -1,8 +1,9 @@
 import { useEffect, useId, useState } from "react";
+import EmailField from "../../../components/EmailField";
+import { normalizeEmail } from "../../../utils/formatters";
 import PasswordField from "../../auth/components/PasswordField";
 
 const EMPTY_FORM = {
-  username: "",
   first_name: "",
   middle_name: "",
   last_name: "",
@@ -11,9 +12,16 @@ const EMPTY_FORM = {
   password: "",
 };
 
-export default function InstructorFormModal({ show, instructor, onSave, onCancel, isSubmitting }) {
+export default function InstructorFormModal({
+  show,
+  instructor,
+  onSave,
+  onCancel,
+  isSubmitting,
+  emailError = "",
+  onClearEmailError,
+}) {
   const [form, setForm] = useState(EMPTY_FORM);
-  const usernameId = useId();
   const firstNameId = useId();
   const middleNameId = useId();
   const lastNameId = useId();
@@ -25,7 +33,6 @@ export default function InstructorFormModal({ show, instructor, onSave, onCancel
   useEffect(() => {
     if (instructor) {
       setForm({
-        username: instructor.username,
         first_name: instructor.first_name,
         middle_name: instructor.middle_name || "",
         last_name: instructor.last_name,
@@ -46,6 +53,11 @@ export default function InstructorFormModal({ show, instructor, onSave, onCancel
     return (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }));
   }
 
+  function handleEmailChange(event) {
+    onClearEmailError?.();
+    handleChange("email")(event);
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
 
@@ -54,9 +66,9 @@ export default function InstructorFormModal({ show, instructor, onSave, onCancel
       // password changes — trying to change credentials happens elsewhere.
       const { password, ...profileFields } = form;
       void password;
-      onSave(profileFields);
+      onSave({ ...profileFields, email: normalizeEmail(profileFields.email) });
     } else {
-      onSave(form);
+      onSave({ ...form, email: normalizeEmail(form.email) });
     }
   }
 
@@ -130,32 +142,14 @@ export default function InstructorFormModal({ show, instructor, onSave, onCancel
               />
             </div>
 
-            <div className="col-md-6">
-              <label htmlFor={usernameId} className="form-label sg-label">
-                Username
-              </label>
-              <input
-                id={usernameId}
-                type="text"
-                className="form-control sg-input"
-                value={form.username}
-                onChange={handleChange("username")}
-                required
-                disabled={isSubmitting}
-              />
-            </div>
 
             <div className="col-md-6">
-              <label htmlFor={emailId} className="form-label sg-label">
-                Email
-              </label>
-              <input
+              <EmailField
                 id={emailId}
-                type="email"
-                className="form-control sg-input"
                 value={form.email}
-                onChange={handleChange("email")}
-                required
+                onChange={handleEmailChange}
+                error={emailError}
+                hint={isEditing ? "Changing the email changes how this person signs in." : ""}
                 disabled={isSubmitting}
               />
             </div>

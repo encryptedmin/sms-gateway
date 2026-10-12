@@ -10,7 +10,7 @@ import { useToast } from "../../../context/ToastContext";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import InstructorFormModal from "../components/InstructorFormModal";
 import PasswordModal from "../../../components/PasswordModal";
-import { extractApiError } from "../../../utils/apiErrors";
+import { extractApiError, extractFieldError } from "../../../utils/apiErrors";
 
 function extractErrorMessage(error) {
   const data = error?.response?.data;
@@ -33,6 +33,7 @@ export default function InstructorsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [instructorPendingDelete, setInstructorPendingDelete] = useState(null);
   const [instructorPendingPasswordReset, setInstructorPendingPasswordReset] = useState(null);
+  const [emailError, setEmailError] = useState("");
 
   useEffect(() => {
     loadInstructors();
@@ -51,16 +52,19 @@ export default function InstructorsPage() {
   }
 
   function openCreateForm() {
+    setEmailError("");
     setEditingInstructor(null);
     setIsFormOpen(true);
   }
 
   function openEditForm(instructor) {
+    setEmailError("");
     setEditingInstructor(instructor);
     setIsFormOpen(true);
   }
 
   async function handleSave(payload) {
+    setEmailError("");
     setIsSubmitting(true);
     try {
       if (editingInstructor) {
@@ -74,6 +78,7 @@ export default function InstructorsPage() {
       }
       setIsFormOpen(false);
     } catch (error) {
+      setEmailError(extractFieldError(error, "email"));
       showToast(extractErrorMessage(error), "error");
     } finally {
       setIsSubmitting(false);
@@ -117,7 +122,7 @@ export default function InstructorsPage() {
         instructorPendingPasswordReset.id,
         payload
       );
-      showToast(`Password reset for "${instructorPendingPasswordReset.username}". Their active sessions were signed out.`);
+      showToast(`Password reset for "${instructorPendingPasswordReset.email}". Their active sessions were signed out.`);
       setInstructorPendingPasswordReset(null);
     } catch (error) {
       showToast(extractApiError(error, "Couldn't reset this password."), "error");
@@ -154,7 +159,6 @@ export default function InstructorsPage() {
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Username</th>
                   <th>Email</th>
                   <th>Status</th>
                   <th></th>
@@ -168,8 +172,7 @@ export default function InstructorsPage() {
                       <td className="sg-cell-primary">
                         {instructor.first_name} {instructor.last_name}
                       </td>
-                      <td>{instructor.username}</td>
-                      <td className="sg-cell-muted">{instructor.email}</td>
+                      <td>{instructor.email}</td>
                       <td>
                         <div className="form-check form-switch mb-0">
                           <input
@@ -221,6 +224,8 @@ export default function InstructorsPage() {
         onSave={handleSave}
         onCancel={() => setIsFormOpen(false)}
         isSubmitting={isSubmitting}
+        emailError={emailError}
+        onClearEmailError={() => setEmailError("")}
       />
 
       <ConfirmDialog
@@ -237,7 +242,7 @@ export default function InstructorsPage() {
       <PasswordModal
         show={Boolean(instructorPendingPasswordReset)}
         title="Reset instructor password"
-        description={`Set a new password for ${instructorPendingPasswordReset?.username || "this account"}. All of their active sessions will be signed out.`}
+        description={`Set a new password for ${instructorPendingPasswordReset?.email || "this account"}. All of their active sessions will be signed out.`}
         isSubmitting={isSubmitting}
         onSubmit={handlePasswordReset}
         onCancel={() => setInstructorPendingPasswordReset(null)}

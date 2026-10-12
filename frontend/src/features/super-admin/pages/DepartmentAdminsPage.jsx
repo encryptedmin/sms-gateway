@@ -11,7 +11,7 @@ import { useToast } from "../../../context/ToastContext";
 import DepartmentAdminEditModal from "../components/DepartmentAdminEditModal";
 import DepartmentAdminForm from "../components/DepartmentAdminForm";
 import PasswordModal from "../../../components/PasswordModal";
-import { extractApiError } from "../../../utils/apiErrors";
+import { extractApiError, extractFieldError } from "../../../utils/apiErrors";
 
 function extractErrorMessage(error) {
   const data = error?.response?.data;
@@ -32,6 +32,7 @@ export default function DepartmentAdminsPage() {
   const [editingAdmin, setEditingAdmin] = useState(null);
   const [adminPendingDelete, setAdminPendingDelete] = useState(null);
   const [adminPendingPasswordReset, setAdminPendingPasswordReset] = useState(null);
+  const [emailError, setEmailError] = useState("");
 
   const loadDepartmentAdmins = useCallback(async () => {
     setIsLoading(true);
@@ -50,13 +51,15 @@ export default function DepartmentAdminsPage() {
   }, [loadDepartmentAdmins]);
 
   async function handleCreate(formValues) {
+    setEmailError("");
     setIsSubmitting(true);
     try {
       const admin = await createDepartmentAdmin(formValues);
       setDepartmentAdmins((prev) => [admin, ...prev.filter((item) => item.id !== admin.id)]);
-      showToast(`Department admin "${admin.username}" created.`);
+      showToast(`Department admin "${admin.email}" created.`);
       return true;
     } catch (error) {
+      setEmailError(extractFieldError(error, "email"));
       showToast(extractErrorMessage(error), "error");
       return false;
     } finally {
@@ -67,6 +70,7 @@ export default function DepartmentAdminsPage() {
   async function handleSave(payload) {
     if (!editingAdmin) return;
 
+    setEmailError("");
     setIsSubmitting(true);
     try {
       const updated = await updateDepartmentAdmin(editingAdmin.id, payload);
@@ -74,6 +78,7 @@ export default function DepartmentAdminsPage() {
       showToast("Department admin updated.");
       setEditingAdmin(null);
     } catch (error) {
+      setEmailError(extractFieldError(error, "email"));
       showToast(extractErrorMessage(error), "error");
     } finally {
       setIsSubmitting(false);
@@ -105,7 +110,7 @@ export default function DepartmentAdminsPage() {
         adminPendingPasswordReset.id,
         payload
       );
-      showToast(`Password reset for "${adminPendingPasswordReset.username}". Their active sessions were signed out.`);
+      showToast(`Password reset for "${adminPendingPasswordReset.email}". Their active sessions were signed out.`);
       setAdminPendingPasswordReset(null);
     } catch (error) {
       showToast(extractApiError(error, "Couldn't reset this password."), "error");
@@ -117,6 +122,7 @@ export default function DepartmentAdminsPage() {
   function handleRowKeyDown(event, admin) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
+      setEmailError("");
       setEditingAdmin(admin);
     }
   }
@@ -133,7 +139,12 @@ export default function DepartmentAdminsPage() {
               </div>
             </div>
             <div className="p-4">
-              <DepartmentAdminForm onSubmit={handleCreate} isSubmitting={isSubmitting} />
+              <DepartmentAdminForm
+                onSubmit={handleCreate}
+                isSubmitting={isSubmitting}
+                emailError={editingAdmin ? "" : emailError}
+                onClearEmailError={() => setEmailError("")}
+              />
             </div>
           </div>
         </div>
@@ -166,7 +177,6 @@ export default function DepartmentAdminsPage() {
                   <thead>
                     <tr>
                       <th>Name</th>
-                      <th>Username</th>
                       <th>Email</th>
                       <th></th>
                     </tr>
@@ -184,14 +194,14 @@ export default function DepartmentAdminsPage() {
                         <td className="sg-cell-primary">
                           {admin.first_name} {admin.last_name}
                         </td>
-                        <td>{admin.username}</td>
-                        <td className="sg-cell-muted">{admin.email}</td>
+                        <td>{admin.email}</td>
                         <td>
                           <div className="d-flex gap-2 justify-content-end">
                             <button
                               className="sg-icon-btn"
                               onClick={(event) => {
                                 event.stopPropagation();
+                                setEmailError("");
                                 setEditingAdmin(admin);
                               }}
                               aria-label="Edit department admin"
@@ -240,8 +250,13 @@ export default function DepartmentAdminsPage() {
         show={Boolean(editingAdmin)}
         admin={editingAdmin}
         onSave={handleSave}
-        onCancel={() => setEditingAdmin(null)}
+        onCancel={() => {
+          setEditingAdmin(null);
+          setEmailError("");
+        }}
         isSubmitting={isSubmitting}
+        emailError={emailError}
+        onClearEmailError={() => setEmailError("")}
       />
 
       <ConfirmDialog
@@ -258,7 +273,7 @@ export default function DepartmentAdminsPage() {
       <PasswordModal
         show={Boolean(adminPendingPasswordReset)}
         title="Reset department admin password"
-        description={`Set a new password for ${adminPendingPasswordReset?.username || "this account"}. All of their active sessions will be signed out.`}
+        description={`Set a new password for ${adminPendingPasswordReset?.email || "this account"}. All of their active sessions will be signed out.`}
         isSubmitting={isSubmitting}
         onSubmit={handlePasswordReset}
         onCancel={() => setAdminPendingPasswordReset(null)}

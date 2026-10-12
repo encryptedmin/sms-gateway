@@ -1,7 +1,9 @@
 import { useEffect, useId, useState } from "react";
+import EmailField from "../../../components/EmailField";
+import { extractFieldError } from "../../../utils/apiErrors";
+import { normalizeEmail } from "../../../utils/formatters";
 
 const EMPTY_FORM = {
-  username: "",
   password: "",
   first_name: "",
   middle_name: "",
@@ -36,8 +38,8 @@ export default function EnrollSubscriberModal({ show, onEnroll, onCancel }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [emailError, setEmailError] = useState("");
 
-  const usernameId = useId();
   const passwordId = useId();
   const firstNameId = useId();
   const middleNameId = useId();
@@ -49,6 +51,7 @@ export default function EnrollSubscriberModal({ show, onEnroll, onCancel }) {
     if (show) {
       setForm(EMPTY_FORM);
       setErrorMessage("");
+      setEmailError("");
     }
   }, [show]);
 
@@ -60,9 +63,15 @@ export default function EnrollSubscriberModal({ show, onEnroll, onCancel }) {
     return (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }));
   }
 
+  function handleEmailChange(event) {
+    setEmailError("");
+    handleChange("email")(event);
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setErrorMessage("");
+    setEmailError("");
 
     if (form.password.length < 8) {
       setErrorMessage("Password must be at least 8 characters.");
@@ -73,16 +82,20 @@ export default function EnrollSubscriberModal({ show, onEnroll, onCancel }) {
 
     try {
       await onEnroll({
-        username: form.username.trim(),
         password: form.password,
         first_name: form.first_name.trim(),
         middle_name: form.middle_name.trim(),
         last_name: form.last_name.trim(),
         extension_name: form.extension_name.trim(),
-        email: form.email.trim(),
+        email: normalizeEmail(form.email),
       });
     } catch (error) {
-      setErrorMessage(extractErrorMessage(error));
+      const fieldError = extractFieldError(error, "email");
+      if (fieldError) {
+        setEmailError(fieldError);
+      } else {
+        setErrorMessage(extractErrorMessage(error));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -94,7 +107,7 @@ export default function EnrollSubscriberModal({ show, onEnroll, onCancel }) {
         <h5 className="mb-1">Enroll a subscriber</h5>
         <p className="text-muted mb-3" style={{ fontSize: "0.88rem" }}>
           Creates the subscriber's login and account. Since this is LAN-only with no public
-          sign-up, give them the username and password directly after this.
+          sign-up, give them the email and password directly after this.
         </p>
 
         {errorMessage && (
@@ -105,21 +118,6 @@ export default function EnrollSubscriberModal({ show, onEnroll, onCancel }) {
 
         <form onSubmit={handleSubmit}>
           <div className="row g-3">
-            <div className="col-md-6">
-              <label htmlFor={usernameId} className="form-label sg-label">
-                Username
-              </label>
-              <input
-                id={usernameId}
-                type="text"
-                className="form-control sg-input"
-                value={form.username}
-                onChange={handleChange("username")}
-                required
-                disabled={isSubmitting}
-                autoComplete="off"
-              />
-            </div>
 
             <div className="col-md-6">
               <label htmlFor={passwordId} className="form-label sg-label">
@@ -140,16 +138,11 @@ export default function EnrollSubscriberModal({ show, onEnroll, onCancel }) {
             </div>
 
             <div className="col-md-6">
-              <label htmlFor={emailId} className="form-label sg-label">
-                Email
-              </label>
-              <input
+              <EmailField
                 id={emailId}
-                type="email"
-                className="form-control sg-input"
                 value={form.email}
-                onChange={handleChange("email")}
-                required
+                onChange={handleEmailChange}
+                error={emailError}
                 disabled={isSubmitting}
               />
             </div>

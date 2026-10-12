@@ -33,8 +33,19 @@ export function maskApiKey(key) {
   return `${key.slice(0, 8)}••••••••••••${key.slice(-4)}`;
 }
 
-export function initials(firstName, lastName) {
+export function initials(firstName, lastName, email) {
   const a = (firstName || "").charAt(0);
   const b = (lastName || "").charAt(0);
-  return `${a}${b}`.toUpperCase() || "?";
+  return `${a}${b}`.toUpperCase() || (email || "").charAt(0).toUpperCase() || "?";
+}
+
+// Full name when the account has one, otherwise the email (the account's only identifier).
+export function displayName(user) {
+  const name = [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim();
+  return name || user?.email || "";
+}
+
+// Emails are the login, so send them trimmed and lower-cased.
+export function normalizeEmail(value) {
+  return (value || "").trim().toLowerCase();
 }

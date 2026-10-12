@@ -43,7 +43,7 @@ export default function OverviewPage() {
   return (
     <div>
       <p className="text-muted mb-4">
-        Welcome, {user?.first_name}. Here's a snapshot of the messages you've sent.
+        Welcome, {user?.first_name || user?.email}. Here's a snapshot of the messages you've sent.
       </p>
 
       {isLoading ? (

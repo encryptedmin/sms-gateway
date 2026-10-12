@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from "react";
+import EmailField from "../../../components/EmailField";
+import { normalizeEmail } from "../../../utils/formatters";
 
 const EMPTY_FORM = {
-  username: "",
   first_name: "",
   middle_name: "",
   last_name: "",
@@ -15,9 +16,10 @@ export default function DepartmentAdminEditModal({
   onSave,
   onCancel,
   isSubmitting,
+  emailError = "",
+  onClearEmailError,
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
-  const usernameId = useId();
   const firstNameId = useId();
   const middleNameId = useId();
   const lastNameId = useId();
@@ -27,7 +29,6 @@ export default function DepartmentAdminEditModal({
   useEffect(() => {
     if (admin) {
       setForm({
-        username: admin.username,
         first_name: admin.first_name,
         middle_name: admin.middle_name || "",
         last_name: admin.last_name,
@@ -47,9 +48,14 @@ export default function DepartmentAdminEditModal({
     return (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }));
   }
 
+  function handleEmailChange(event) {
+    onClearEmailError?.();
+    handleChange("email")(event);
+  }
+
   function handleSubmit(event) {
     event.preventDefault();
-    onSave(form);
+    onSave({ ...form, email: normalizeEmail(form.email) });
   }
 
   return (
@@ -120,32 +126,14 @@ export default function DepartmentAdminEditModal({
               />
             </div>
 
-            <div className="col-md-6">
-              <label htmlFor={usernameId} className="form-label sg-label">
-                Username
-              </label>
-              <input
-                id={usernameId}
-                type="text"
-                className="form-control sg-input"
-                value={form.username}
-                onChange={handleChange("username")}
-                required
-                disabled={isSubmitting}
-              />
-            </div>
 
             <div className="col-md-6">
-              <label htmlFor={emailId} className="form-label sg-label">
-                Email
-              </label>
-              <input
+              <EmailField
                 id={emailId}
-                type="email"
-                className="form-control sg-input"
                 value={form.email}
-                onChange={handleChange("email")}
-                required
+                onChange={handleEmailChange}
+                error={emailError}
+                hint="Changing the email changes how this person signs in."
                 disabled={isSubmitting}
               />
             </div>

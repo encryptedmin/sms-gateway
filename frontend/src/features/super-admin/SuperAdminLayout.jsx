@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import ThemeToggle from "../../components/ThemeToggle";
-import { initials } from "../../utils/formatters";
+import { displayName, initials } from "../../utils/formatters";
 import "../../styles/adminLayout.css";
 
 const NAV_ITEMS = [
@@ -59,10 +59,10 @@ export default function SuperAdminLayout() {
 
         <div className="sg-sidebar-footer">
           <div className="sg-sidebar-user">
-            <div className="sg-avatar">{initials(user?.first_name, user?.last_name)}</div>
+            <div className="sg-avatar">{initials(user?.first_name, user?.last_name, user?.email)}</div>
             <div>
               <div className="sg-sidebar-user-name">
-                {user?.first_name} {user?.last_name}
+                {displayName(user)}
               </div>
               <div className="sg-sidebar-user-role">Super Admin</div>
             </div>

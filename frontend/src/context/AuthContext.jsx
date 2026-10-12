@@ -82,8 +82,8 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
-  async function login(username, password) {
-    const loggedInUser = await authService.login(username, password);
+  async function login(email, password) {
+    const loggedInUser = await authService.login(email, password);
     setUser(loggedInUser);
     return loggedInUser;
   }

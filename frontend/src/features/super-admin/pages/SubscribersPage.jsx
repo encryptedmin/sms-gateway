@@ -4,7 +4,7 @@ import { listApiKeys, createApiKey, setApiKeyEnabled } from "../../../api/apiKey
 import { listSubscriptions, enrollSubscription, changeSubscriptionPlan } from "../../../api/subscriptionsService";
 import { listPlans } from "../../../api/plansService";
 import { useToast } from "../../../context/ToastContext";
-import { formatDate } from "../../../utils/formatters";
+import { displayName, formatDate } from "../../../utils/formatters";
 import ApiKeyCell from "../components/ApiKeyCell";
 import SubscriptionCell from "../components/SubscriptionCell";
 import PlanPickerModal from "../components/PlanPickerModal";
@@ -72,9 +72,8 @@ export default function SubscribersPage() {
     return subscribers.filter((subscriber) => {
       const { user } = subscriber;
       return (
-        user.username.toLowerCase().includes(term) ||
-        user.first_name.toLowerCase().includes(term) ||
-        user.last_name.toLowerCase().includes(term) ||
+        (user.first_name || "").toLowerCase().includes(term) ||
+        (user.last_name || "").toLowerCase().includes(term) ||
         user.email.toLowerCase().includes(term)
       );
     });
@@ -136,8 +135,8 @@ export default function SubscribersPage() {
 
   async function handleEnrollSubscriber(payload) {
     const newSubscriber = await enrollSubscriber(payload);
-    setSubscribers((prev) => [...prev, newSubscriber].sort((a, b) => a.user.username.localeCompare(b.user.username)));
-    showToast(`${newSubscriber.user.username} enrolled. Share their username and temporary password directly.`);
+    setSubscribers((prev) => [...prev, newSubscriber].sort((a, b) => displayName(a.user).localeCompare(displayName(b.user))));
+    showToast(`${displayName(newSubscriber.user)} enrolled. Share their email and temporary password directly.`);
     setIsEnrollOpen(false);
   }
 
@@ -150,11 +149,11 @@ export default function SubscribersPage() {
       if (mode === "change" && subscription) {
         const updated = await changeSubscriptionPlan(subscription.id, planId);
         setSubscriptions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-        showToast(`Switched ${subscriber.user.username} to ${updated.plan_name}.`);
+        showToast(`Switched ${displayName(subscriber.user)} to ${updated.plan_name}.`);
       } else {
         const created = await enrollSubscription(subscriber.id, planId);
         setSubscriptions((prev) => [...prev, created]);
-        showToast(`${subscriber.user.username} enrolled in ${created.plan_name}.`);
+        showToast(`${displayName(subscriber.user)} enrolled in ${created.plan_name}.`);
       }
       setPlanPickerTarget(null);
     } catch {
@@ -221,11 +220,11 @@ export default function SubscribersPage() {
                     <tr key={subscriber.id}>
                       <td>
                         <div className="sg-cell-primary">
-                          {subscriber.user.first_name} {subscriber.user.last_name}
+                          {displayName(subscriber.user)}
                         </div>
-                        <div className="sg-cell-muted">
-                          @{subscriber.user.username} · {subscriber.user.email}
-                        </div>
+                        {subscriber.user.first_name || subscriber.user.last_name ? (
+                          <div className="sg-cell-muted">{subscriber.user.email}</div>
+                        ) : null}
                       </td>
                       <td className="sg-cell-muted">{formatDate(subscriber.start_date)}</td>
                       <td>

@@ -1,5 +1,6 @@
 import { useAuth } from "../../context/AuthContext";
 import { getRoleLabel } from "../../utils/roles";
+import { displayName } from "../../utils/formatters";
 import ThemeToggle from "../../components/ThemeToggle";
 import "../../styles/adminLayout.css";
 
@@ -18,7 +19,7 @@ export default function DashboardShell({ roleTitle, accentIcon, children }) {
 
         <div className="d-flex align-items-center gap-3 flex-wrap">
           <span style={{ fontSize: "0.9rem", color: "var(--sg-text-300)" }}>
-            {user?.first_name} {user?.last_name}
+            {displayName(user)}
             <span className="ms-2 sg-pill sg-pill--success">{getRoleLabel(user?.role)}</span>
           </span>
           <ThemeToggle />

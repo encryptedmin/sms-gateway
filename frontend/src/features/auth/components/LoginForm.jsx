@@ -3,13 +3,13 @@ import PasswordField from "./PasswordField";
 import AlertBanner from "./AlertBanner";
 
 export default function LoginForm({ onSubmit, isSubmitting, errorMessage, onDismissError }) {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const usernameId = useId();
+  const emailId = useId();
 
   function handleSubmit(event) {
     event.preventDefault();
-    onSubmit({ username, password });
+    onSubmit({ email: email.trim(), password });
   }
 
   return (
@@ -17,21 +17,22 @@ export default function LoginForm({ onSubmit, isSubmitting, errorMessage, onDism
       <AlertBanner message={errorMessage} onDismiss={onDismissError} />
 
       <div className="mb-3">
-        <label htmlFor={usernameId} className="form-label sg-label">
-          Username
+        <label htmlFor={emailId} className="form-label sg-label">
+          Email
         </label>
         <div className="input-group sg-input-group">
           <span className="input-group-text sg-input-icon">
-            <i className="bi bi-person-fill"></i>
+            <i className="bi bi-envelope-fill"></i>
           </span>
           <input
-            id={usernameId}
-            type="text"
+            id={emailId}
+            type="email"
+            inputMode="email"
             className="form-control sg-input"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
             autoComplete="username"
-            placeholder="e.g. jdelacruz"
+            placeholder="you@school.edu"
             required
             disabled={isSubmitting}
             autoFocus

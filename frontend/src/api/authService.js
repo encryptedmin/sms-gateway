@@ -20,13 +20,13 @@ function extractErrorMessage(error) {
     return data[firstKey][0];
   }
 
-  return "Invalid username or password.";
+  return "Invalid email or password.";
 }
 
-export async function login(username, password) {
+export async function login(email, password) {
   try {
     const tokenResponse = await axiosClient.post("/token/", {
-      username,
+      email,
       password,
     });
 

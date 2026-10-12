@@ -1,8 +1,9 @@
 import { useId, useState } from "react";
 import PasswordField from "../../auth/components/PasswordField";
+import EmailField from "../../../components/EmailField";
+import { normalizeEmail } from "../../../utils/formatters";
 
 const EMPTY_FORM = {
-  username: "",
   first_name: "",
   middle_name: "",
   last_name: "",
@@ -11,9 +12,8 @@ const EMPTY_FORM = {
   password: "",
 };
 
-export default function DepartmentAdminForm({ onSubmit, isSubmitting }) {
+export default function DepartmentAdminForm({ onSubmit, isSubmitting, emailError = "", onClearEmailError }) {
   const [form, setForm] = useState(EMPTY_FORM);
-  const usernameId = useId();
   const firstNameId = useId();
   const middleNameId = useId();
   const lastNameId = useId();
@@ -24,9 +24,14 @@ export default function DepartmentAdminForm({ onSubmit, isSubmitting }) {
     return (event) => setForm((prev) => ({ ...prev, [field]: event.target.value }));
   }
 
+  function handleEmailChange(event) {
+    onClearEmailError?.();
+    handleChange("email")(event);
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
-    const wasCreated = await onSubmit(form);
+    const wasCreated = await onSubmit({ ...form, email: normalizeEmail(form.email) });
     if (wasCreated) {
       setForm(EMPTY_FORM);
     }
@@ -93,34 +98,15 @@ export default function DepartmentAdminForm({ onSubmit, isSubmitting }) {
           />
         </div>
 
-        <div className="col-md-6">
-          <label htmlFor={usernameId} className="form-label sg-label">
-            Username
-          </label>
-          <input
-            id={usernameId}
-            type="text"
-            className="form-control sg-input"
-            value={form.username}
-            onChange={handleChange("username")}
-            required
-            disabled={isSubmitting}
-          />
-        </div>
 
         <div className="col-md-6">
-          <label htmlFor={emailId} className="form-label sg-label">
-            Email
-          </label>
-          <input
-            id={emailId}
-            type="email"
-            className="form-control sg-input"
-            value={form.email}
-            onChange={handleChange("email")}
-            required
-            disabled={isSubmitting}
-          />
+          <EmailField
+                id={emailId}
+                value={form.email}
+                onChange={handleEmailChange}
+                error={emailError}
+                disabled={isSubmitting}
+              />
         </div>
 
         <div className="col-md-6">
