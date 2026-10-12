@@ -237,6 +237,62 @@ class GatewayApiTests(TestCase):
         self.assertEqual(result["signal_csq"], 18)
         serial_connection.close.assert_called_once_with()
 
+    def test_signal_check_includes_newly_enumerated_serial_ports(self):
+        from .services import Sim800Service
+
+        ModemStatus.objects.create(
+            port="COM6",
+            is_online=True,
+        )
+        service = Sim800Service()
+
+        with patch.object(
+            service,
+            "_configured_ports_from_settings",
+            return_value=["COM3", "COM4"],
+        ), patch.object(
+            service,
+            "_available_ports",
+            return_value=["COM3", "COM4", "COM6", "COM7"],
+        ):
+            ports = service.signal_check_ports()
+
+        self.assertEqual(
+            ports,
+            [
+                "COM6",
+                "COM3",
+                "COM4",
+                "COM7",
+            ],
+        )
+
+    def test_sms_dispatch_uses_only_responsive_cached_modems(self):
+        from .services import Sim800Service
+
+        ModemStatus.objects.create(
+            port="COM3",
+            is_online=False,
+        )
+        ModemStatus.objects.create(
+            port="COM6",
+            is_online=True,
+        )
+        ModemStatus.objects.create(
+            port="COM7",
+            is_online=True,
+        )
+
+        service = Sim800Service()
+
+        self.assertEqual(
+            service.preferred_ports,
+            [
+                "COM6",
+                "COM7",
+            ],
+        )
+
 
 class InstructorSmsIsolationTests(TestCase):
 

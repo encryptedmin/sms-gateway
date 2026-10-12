@@ -76,7 +76,11 @@ class Sim800Service:
         from .models import ModemStatus
 
         known = list(
-            ModemStatus.objects.values_list(
+            ModemStatus.objects.filter(
+                is_online=True
+            ).order_by(
+                "port"
+            ).values_list(
                 "port",
                 flat=True
             )
@@ -132,9 +136,9 @@ class Sim800Service:
 
     def detected_ports(self):
         """
-        Which of the configured SMS_MODEM_PORTS are actually plugged in
-        right now. Used by the round-robin dispatcher to only rotate
-        across modems that are physically present.
+        Which responsive cached modems are still physically plugged in.
+        Used by the round-robin dispatcher to rotate only across verified,
+        currently present ports.
         """
 
         available = self._available_ports()
@@ -828,15 +832,20 @@ class Sim800Service:
 
     def signal_check_ports(self):
         """
-        Return configured and previously-known modem ports without probing
-        arbitrary serial devices. The automatic refresh can therefore issue
-        exactly one harmless modem command: AT+CSQ.
+        Return configured, previously-known, and currently enumerated serial
+        ports. Including newly enumerated ports lets a SIM800 appear after it
+        is plugged in or assigned a different COM number without requiring a
+        settings change. The caller still issues only the single harmless
+        AT+CSQ query; devices that do not answer remain marked unknown and are
+        excluded from SMS dispatch by _get_preferred_ports.
         """
 
         from .models import ModemStatus
 
         known_ports = list(
-            ModemStatus.objects.values_list(
+            ModemStatus.objects.order_by(
+                "port"
+            ).values_list(
                 "port",
                 flat=True
             )
@@ -844,7 +853,9 @@ class Sim800Service:
 
         return list(
             dict.fromkeys(
-                known_ports + self._configured_ports_from_settings()
+                known_ports +
+                self._configured_ports_from_settings() +
+                self._available_ports()
             )
         )
 

@@ -780,10 +780,11 @@ def modem_status(request):
 @permission_classes([CanSendSms])
 def modem_status_check(request):
     """
-    Automatic, read-only signal refresh. It issues AT+CSQ only against
-    configured/previously-known modem ports and stores the result for every
-    dashboard. The cooldown prevents several open tabs from querying the
-    same modem at once; the port lock prevents collision with an SMS send.
+    Automatic, read-only signal refresh. It issues AT+CSQ against configured,
+    previously-known, and newly enumerated serial ports, then stores the
+    result for every dashboard. The cooldown prevents several open tabs from
+    querying the same modem at once; the port lock prevents collision with an
+    SMS send.
     """
 
     client = _redis_client()
@@ -831,8 +832,9 @@ def modem_status_check(request):
     probe = Sim800Service()
     signal_ports = probe.signal_check_ports()
 
-    # Do not scan or identify unrelated serial devices here. Automatic
-    # refreshes are intentionally limited to a single AT+CSQ per known port.
+    # Do not run identity/setup commands against serial devices here. Every
+    # enumerated port receives only one read-only AT+CSQ query; ports that do
+    # not understand it are retained as unknown and never used for sending.
     for port in signal_ports:
 
         result = probe.check_signal(port)
