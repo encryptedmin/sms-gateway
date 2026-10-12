@@ -86,6 +86,17 @@ python manage.py migrate
 celery -A core worker --pool=threads --concurrency=2 -l info
 ```
 
+### Scheduled sending
+
+Messages can be sent later by adding `scheduled_for` (ISO 8601 with a UTC
+offset, e.g. `2026-10-20T15:30:00+08:00`) to `POST /api/department/send-sms/`
+or `POST /api/send-sms/`. They are stored as `SCHEDULED` logs and released by
+**Celery beat**, which must be running alongside the worker (Docker starts it
+as the `beat` service; natively run `celery -A core beat -l info` in a third
+terminal). Run only one beat. Managing them: `POST /api/logs/{id}/cancel/`,
+`/reschedule/`, `/send-now/`, `POST /api/logs/bulk-cancel/` (`ids` or
+`batch_id`), and `POST /api/messages/{id}/cancel/` for API-key clients.
+
 The default address is `redis://127.0.0.1:6379/0`. To use another port, edit
 `REDIS_PORT` in `.env` before starting Compose. To use an existing or hosted
 Redis service, set `REDIS_URL` instead.

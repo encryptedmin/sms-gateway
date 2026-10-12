@@ -190,6 +190,8 @@ class SmsLog(models.Model):
         ("RETRYING", "RETRYING"),
         ("SENT", "SENT"),
         ("FAILED", "FAILED"),
+        ("SCHEDULED", "SCHEDULED"),
+        ("CANCELLED", "CANCELLED"),
     ]
 
     subscriber = models.ForeignKey(
@@ -226,6 +228,27 @@ class SmsLog(models.Model):
 
     created_at = models.DateTimeField(
         auto_now_add=True
+    )
+
+    scheduled_for = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "For SCHEDULED messages: when gateway.tasks."
+            "dispatch_due_scheduled_sms should hand the message to a "
+            "modem worker. Kept after sending as a record of the plan."
+        )
+    )
+
+    batch_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Groups the messages created by one scheduled bulk send, so "
+            "they can be listed and cancelled together."
+        )
     )
 
     sent_at = models.DateTimeField(

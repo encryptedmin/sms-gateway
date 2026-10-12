@@ -15,6 +15,7 @@ from .views import (
     SubscriptionViewSet,
     send_sms,
     api_messages,
+    api_cancel_message,
     department_send_sms,
     retry_policy,
     modem_status,
@@ -77,6 +78,11 @@ urlpatterns = [
     path(
         "messages/",
         api_messages
+    ),
+
+    path(
+        "messages/<int:log_id>/cancel/",
+        api_cancel_message
     ),
 
     path(

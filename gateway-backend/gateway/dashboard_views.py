@@ -30,11 +30,16 @@ def dashboard_stats(request):
         status="PENDING"
     ).count()
 
+    scheduled_messages = queryset.filter(
+        status="SCHEDULED"
+    ).count()
+
     return Response(
         {
             "total_messages": total_messages,
             "sent_messages": sent_messages,
             "failed_messages": failed_messages,
             "pending_messages": pending_messages,
+            "scheduled_messages": scheduled_messages,
         }
     )

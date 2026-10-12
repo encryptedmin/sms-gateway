@@ -38,6 +38,7 @@ MESSAGE_REJECTED = "MESSAGE_REJECTED"
 STORAGE_FULL = "STORAGE_FULL"
 TIMEOUT = "TIMEOUT"
 RECIPIENT_BUSY = "RECIPIENT_BUSY"
+ACCOUNT_BLOCKED = "ACCOUNT_BLOCKED"
 UNKNOWN = "UNKNOWN"
 
 FAILURE_CATEGORY_CHOICES = [
@@ -50,6 +51,7 @@ FAILURE_CATEGORY_CHOICES = [
     (STORAGE_FULL, "Modem/SIM storage full"),
     (TIMEOUT, "No response in time"),
     (RECIPIENT_BUSY, "Recipient already being sent to"),
+    (ACCOUNT_BLOCKED, "Account cannot send (inactive / no plan / quota used)"),
     (UNKNOWN, "Unknown / unclassified"),
 ]
 

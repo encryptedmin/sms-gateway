@@ -1,9 +1,12 @@
+import uuid
 from contextlib import nullcontext
 from datetime import date
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from contacts.models import Contact
@@ -17,6 +20,8 @@ from .models import ApiKey
 from .models import SmsLog
 from .models import Subscription
 from .models import ModemStatus
+from .tasks import dispatch_due_scheduled_sms
+from .tasks import process_sms
 
 
 class GatewayApiTests(TestCase):
@@ -374,6 +379,7 @@ class InstructorSmsIsolationTests(TestCase):
                 "sent_messages": 1,
                 "failed_messages": 1,
                 "pending_messages": 1,
+                "scheduled_messages": 0,
             },
         )
 
@@ -568,3 +574,410 @@ class InstructorSmsIsolationTests(TestCase):
         modem = ModemStatus.objects.get(port="COM3")
         self.assertTrue(modem.is_online)
         self.assertEqual(modem.signal_bucket, "EXCELLENT")
+
+
+class ScheduledSmsTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.instructor = User.objects.create_user(
+            username="sched-instructor",
+            email="sched1@example.com",
+            password="pass12345",
+            first_name="Sched",
+            last_name="One",
+            role="INSTRUCTOR",
+        )
+        self.other_instructor = User.objects.create_user(
+            username="sched-other",
+            email="sched2@example.com",
+            password="pass12345",
+            first_name="Sched",
+            last_name="Two",
+            role="INSTRUCTOR",
+        )
+        self.subscriber_user = User.objects.create_user(
+            username="sched-subscriber",
+            email="sched3@example.com",
+            password="pass12345",
+            role="SUBSCRIBER",
+        )
+        self.subscriber = Subscriber.objects.create(
+            user=self.subscriber_user,
+            start_date=date.today(),
+        )
+        self.api_key = ApiKey.objects.create(subscriber=self.subscriber)
+        self.plan = Plan.objects.create(
+            plan_name="Unlimited",
+            description="test",
+            price=0,
+            payment_type="test",
+            plan_type="UNLIMITED",
+        )
+        self.subscription = Subscription.objects.create(
+            subscriber=self.subscriber,
+            plan=self.plan,
+        )
+
+    def future(self, **delta):
+        return (timezone.now() + timedelta(**delta)).isoformat()
+
+    def make_log(self, minutes_from_now, **fields):
+        fields.setdefault("sent_by", self.instructor)
+        fields.setdefault("recipient", "09171234567")
+        fields.setdefault("message", "Scheduled")
+        return SmsLog.objects.create(
+            status="SCHEDULED",
+            scheduled_for=timezone.now() + timedelta(minutes=minutes_from_now),
+            **fields,
+        )
+
+    def send_api(self, **body):
+        return self.client.post(
+            "/api/send-sms/",
+            {"recipient": "09171234567", "message": "Hi", **body},
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {self.api_key.api_key}",
+        )
+
+    # ---- creating schedules
+
+    @patch("gateway.views.process_sms.delay")
+    def test_department_send_can_be_scheduled_as_one_batch(self, delay):
+        for number in ("09171111111", "09172222222"):
+            Contact.objects.create(
+                first_name=number[-2:],
+                mobile_number=number,
+                owner=self.instructor,
+            )
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.post(
+            "/api/department/send-sms/",
+            {
+                "target_type": "all",
+                "message": "Exam moved.",
+                "scheduled_for": self.future(hours=2),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "scheduled")
+        self.assertEqual(response.data["contacts"], 2)
+        delay.assert_not_called()
+
+        logs = SmsLog.objects.filter(status="SCHEDULED")
+        self.assertEqual(logs.count(), 2)
+        self.assertEqual(
+            {str(batch) for batch in logs.values_list("batch_id", flat=True)},
+            {str(response.data["batch_id"])},
+        )
+        self.assertEqual(
+            sorted(response.data["log_ids"]),
+            sorted(logs.values_list("id", flat=True)),
+        )
+        self.assertTrue(all(log.scheduled_for for log in logs))
+
+    @patch("gateway.views.process_sms.delay")
+    def test_invalid_schedule_times_are_rejected_without_creating_anything(self, delay):
+        Contact.objects.create(
+            first_name="A",
+            mobile_number="09171111111",
+            owner=self.instructor,
+        )
+        self.client.force_authenticate(user=self.instructor)
+
+        for bad in (
+            "not a date",
+            self.future(hours=-3),
+            self.future(days=400),
+        ):
+            response = self.client.post(
+                "/api/department/send-sms/",
+                {"target_type": "all", "message": "x", "scheduled_for": bad},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 400, bad)
+            self.assertIn("scheduled_for", response.data["error"])
+
+        self.assertEqual(SmsLog.objects.count(), 0)
+        delay.assert_not_called()
+
+    @patch("gateway.views.process_sms.delay")
+    def test_blank_schedule_still_sends_immediately(self, delay):
+        response = self.send_api(scheduled_for="")
+
+        self.assertEqual(response.data["status"], "queued")
+        delay.assert_called_once()
+
+    @patch("gateway.views.process_sms.delay")
+    def test_api_key_send_can_be_scheduled(self, delay):
+        response = self.send_api(scheduled_for=self.future(hours=1))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "scheduled")
+        delay.assert_not_called()
+        log = SmsLog.objects.get(id=response.data["log_id"])
+        self.assertEqual(log.status, "SCHEDULED")
+        self.assertEqual(log.subscriber, self.subscriber)
+
+    @patch("gateway.views.process_sms.delay")
+    def test_scheduling_still_requires_quota_remaining(self, delay):
+        limited = Plan.objects.create(
+            plan_name="Tiny",
+            description="test",
+            price=0,
+            payment_type="test",
+            plan_type="LIMITED",
+            message_limit=1,
+        )
+        self.subscription.plan = limited
+        self.subscription.messages_sent_this_period = 1
+        self.subscription.save()
+
+        response = self.send_api(scheduled_for=self.future(hours=1))
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(SmsLog.objects.count(), 0)
+
+    # ---- dispatching
+
+    @patch("gateway.tasks.process_sms.delay")
+    def test_dispatcher_releases_only_due_messages_and_only_once(self, delay):
+        due = self.make_log(-1)
+        later = self.make_log(60)
+
+        self.assertEqual(dispatch_due_scheduled_sms(), 1)
+
+        due.refresh_from_db()
+        later.refresh_from_db()
+        self.assertEqual(due.status, "PENDING")
+        self.assertEqual(later.status, "SCHEDULED")
+        delay.assert_called_once_with(due.id)
+
+        # A second tick must not queue the same message again.
+        self.assertEqual(dispatch_due_scheduled_sms(), 0)
+        delay.assert_called_once()
+
+    @patch("gateway.tasks.process_sms.delay")
+    def test_dispatcher_releases_oldest_first_and_respects_batch_size(self, delay):
+        newer = self.make_log(-1)
+        older = self.make_log(-30)
+
+        self.assertEqual(dispatch_due_scheduled_sms(batch_size=1), 1)
+
+        older.refresh_from_db()
+        newer.refresh_from_db()
+        self.assertEqual(older.status, "PENDING")
+        self.assertEqual(newer.status, "SCHEDULED")
+
+    @patch("gateway.tasks.process_sms.delay")
+    def test_cancelled_message_is_never_released(self, delay):
+        log = self.make_log(-1)
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.post(f"/api/logs/{log.id}/cancel/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "CANCELLED")
+        self.assertFalse(response.data["can_cancel"])
+        self.assertEqual(dispatch_due_scheduled_sms(), 0)
+        delay.assert_not_called()
+
+    @patch("gateway.tasks.process_sms.delay")
+    def test_release_fails_message_when_account_can_no_longer_send(self, delay):
+        log = self.make_log(-1, subscriber=self.subscriber, sent_by=None)
+        self.subscriber.active = False
+        self.subscriber.save()
+
+        self.assertEqual(dispatch_due_scheduled_sms(), 0)
+
+        log.refresh_from_db()
+        self.assertEqual(log.status, "FAILED")
+        self.assertEqual(log.failure_category, "ACCOUNT_BLOCKED")
+        self.assertIn("inactive", log.error_message)
+        delay.assert_not_called()
+
+    @patch("gateway.tasks.process_sms.delay", side_effect=Exception("broker down"))
+    def test_release_marks_failed_when_the_queue_is_unreachable(self, delay):
+        log = self.make_log(-1)
+
+        self.assertEqual(dispatch_due_scheduled_sms(), 0)
+
+        log.refresh_from_db()
+        self.assertEqual(log.status, "FAILED")
+        self.assertIn("broker down", log.error_message)
+
+    @patch("gateway.tasks.send_sms_with_hard_timeout")
+    def test_worker_task_never_sends_scheduled_or_cancelled_messages(self, send):
+        scheduled = self.make_log(60)
+        cancelled = self.make_log(60)
+        SmsLog.objects.filter(id=cancelled.id).update(status="CANCELLED")
+
+        self.assertFalse(process_sms(scheduled.id))
+        self.assertFalse(process_sms(cancelled.id))
+
+        send.assert_not_called()
+        scheduled.refresh_from_db()
+        cancelled.refresh_from_db()
+        self.assertEqual(scheduled.status, "SCHEDULED")
+        self.assertEqual(cancelled.status, "CANCELLED")
+        self.assertEqual(scheduled.attempts, 0)
+
+    # ---- managing schedules
+
+    @patch("gateway.tasks.process_sms.delay")
+    def test_reschedule_and_send_now(self, delay):
+        log = self.make_log(60)
+        self.client.force_authenticate(user=self.instructor)
+
+        new_time = self.future(hours=5)
+        response = self.client.post(
+            f"/api/logs/{log.id}/reschedule/",
+            {"scheduled_for": new_time},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        log.refresh_from_db()
+        self.assertGreater(log.scheduled_for, timezone.now() + timedelta(hours=4))
+
+        self.assertEqual(
+            self.client.post(
+                f"/api/logs/{log.id}/reschedule/", {}, format="json"
+            ).status_code,
+            400,
+        )
+
+        response = self.client.post(f"/api/logs/{log.id}/send-now/")
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.data["status"], "PENDING")
+        delay.assert_called_once_with(log.id)
+
+        # No longer scheduled: every schedule action is refused.
+        for action in ("cancel", "send-now"):
+            self.assertEqual(
+                self.client.post(f"/api/logs/{log.id}/{action}/").status_code, 400
+            )
+        self.assertEqual(
+            self.client.post(
+                f"/api/logs/{log.id}/reschedule/",
+                {"scheduled_for": new_time},
+                format="json",
+            ).status_code,
+            400,
+        )
+
+    def test_instructor_cannot_manage_another_instructors_schedule(self):
+        theirs = self.make_log(60, sent_by=self.other_instructor)
+        self.client.force_authenticate(user=self.instructor)
+
+        for action in ("cancel", "send-now", "reschedule"):
+            response = self.client.post(
+                f"/api/logs/{theirs.id}/{action}/",
+                {"scheduled_for": self.future(hours=2)},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 404, action)
+
+        theirs.refresh_from_db()
+        self.assertEqual(theirs.status, "SCHEDULED")
+
+    def test_bulk_cancel_by_batch_or_ids_skips_what_is_not_scheduled(self):
+        batch = uuid.uuid4()
+        in_batch = [self.make_log(60, batch_id=batch) for _ in range(3)]
+        other = self.make_log(60)
+        sent = SmsLog.objects.create(
+            sent_by=self.instructor, recipient="09170000000", message="x", status="SENT"
+        )
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.post(
+            "/api/logs/bulk-cancel/", {"batch_id": str(batch)}, format="json"
+        )
+        self.assertEqual(response.data["cancelled"], 3)
+        self.assertEqual(
+            SmsLog.objects.filter(
+                id__in=[log.id for log in in_batch], status="CANCELLED"
+            ).count(),
+            3,
+        )
+
+        response = self.client.post(
+            "/api/logs/bulk-cancel/", {"ids": [other.id, sent.id]}, format="json"
+        )
+        self.assertEqual(response.data, {"cancelled": 1, "skipped": 1})
+        sent.refresh_from_db()
+        self.assertEqual(sent.status, "SENT")
+
+        self.assertEqual(
+            self.client.post("/api/logs/bulk-cancel/", {}, format="json").status_code, 400
+        )
+        self.assertEqual(
+            self.client.post(
+                "/api/logs/bulk-cancel/", {"batch_id": "nope"}, format="json"
+            ).status_code,
+            400,
+        )
+
+    def test_cancelled_messages_can_be_bulk_deleted(self):
+        log = self.make_log(60)
+        SmsLog.objects.filter(id=log.id).update(status="CANCELLED")
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.post(
+            "/api/logs/bulk-delete/", {"ids": [log.id]}, format="json"
+        )
+
+        self.assertEqual(response.data["deleted"], 1)
+
+    def test_scheduled_list_filter_ordering_and_dashboard_count(self):
+        late = self.make_log(300)
+        soon = self.make_log(10)
+        self.client.force_authenticate(user=self.instructor)
+
+        response = self.client.get("/api/logs/?status=SCHEDULED&ordering=scheduled_for")
+
+        self.assertEqual([row["id"] for row in response.data], [soon.id, late.id])
+        self.assertTrue(all(row["can_cancel"] for row in response.data))
+        self.assertTrue(all(row["scheduled_for"] for row in response.data))
+        self.assertEqual(
+            self.client.get("/api/dashboard/stats/").data["scheduled_messages"], 2
+        )
+
+    # ---- API-key clients
+
+    def test_api_key_client_can_see_and_cancel_only_its_own_schedule(self):
+        mine = self.make_log(60, subscriber=self.subscriber, sent_by=None)
+        sent = SmsLog.objects.create(
+            subscriber=self.subscriber, recipient="09170000000", message="x", status="SENT"
+        )
+        auth = {"HTTP_AUTHORIZATION": f"Bearer {self.api_key.api_key}"}
+
+        listing = self.client.get("/api/messages/", **auth)
+        row = next(m for m in listing.data["messages"] if m["id"] == mine.id)
+        self.assertEqual(row["status"], "SCHEDULED")
+        self.assertIsNotNone(row["scheduled_for"])
+
+        # Someone else's message looks exactly like a missing one.
+        theirs = self.make_log(60)
+        self.assertEqual(
+            self.client.post(f"/api/messages/{theirs.id}/cancel/", **auth).status_code, 404
+        )
+        self.assertEqual(
+            self.client.post(f"/api/messages/{sent.id}/cancel/", **auth).status_code, 409
+        )
+        self.assertEqual(
+            self.client.post(f"/api/messages/{mine.id}/cancel/").status_code, 400
+        )
+        self.assertEqual(
+            self.client.post(
+                f"/api/messages/{mine.id}/cancel/", HTTP_AUTHORIZATION="Bearer wrong"
+            ).status_code,
+            403,
+        )
+
+        response = self.client.post(f"/api/messages/{mine.id}/cancel/", **auth)
+        self.assertEqual(response.status_code, 200)
+        mine.refresh_from_db()
+        self.assertEqual(mine.status, "CANCELLED")

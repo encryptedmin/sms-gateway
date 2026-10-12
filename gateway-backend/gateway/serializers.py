@@ -98,6 +98,13 @@ class SmsLogSerializer(serializers.ModelSerializer):
 
         return obj.attempts <= policy.max_retries
 
+    can_cancel = serializers.SerializerMethodField()
+
+    def get_can_cancel(self, obj):
+        """Scheduled messages can be cancelled, rescheduled or sent now."""
+
+        return obj.status == "SCHEDULED"
+
     class Meta:
         model = SmsLog
         fields = [
@@ -111,6 +118,8 @@ class SmsLogSerializer(serializers.ModelSerializer):
             "message",
             "status",
             "created_at",
+            "scheduled_for",
+            "batch_id",
             "sent_at",
             "error_message",
             "response_message",
@@ -119,6 +128,7 @@ class SmsLogSerializer(serializers.ModelSerializer):
             "failure_category",
             "failure_category_label",
             "can_retry",
+            "can_cancel",
         ]
         read_only_fields = fields
 

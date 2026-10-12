@@ -1,3 +1,5 @@
+import uuid
+
 from rest_framework.decorators import api_view
 from rest_framework.decorators import authentication_classes
 from rest_framework.decorators import permission_classes
@@ -30,8 +32,11 @@ from .serializers import SmsLogSerializer
 from .serializers import SubscriptionSerializer
 from .serializers import SmsRetryPolicySerializer
 
+from .scheduling import ScheduleError
+from .scheduling import parse_scheduled_for
 from .services import Sim800Service
 from .tasks import process_sms
+from .tasks import release_scheduled_log
 from .tasks import _redis_client
 
 
@@ -64,8 +69,25 @@ def _queue_sms(
     recipient,
     message,
     sent_by=None,
-    recipient_name=""
+    recipient_name="",
+    scheduled_for=None,
+    batch_id=None
 ):
+
+    if scheduled_for is not None:
+
+        # Waits in the database; gateway.tasks.dispatch_due_scheduled_sms
+        # (Celery beat) releases it at scheduled_for. See scheduling.py.
+        return SmsLog.objects.create(
+            subscriber=subscriber,
+            recipient=recipient,
+            recipient_name=recipient_name,
+            message=message,
+            status="SCHEDULED",
+            sent_by=sent_by,
+            scheduled_for=scheduled_for,
+            batch_id=batch_id
+        )
 
     log = SmsLog.objects.create(
         subscriber=subscriber,
@@ -188,6 +210,21 @@ def send_sms(request):
 
     try:
 
+        scheduled_for = parse_scheduled_for(
+            request.data.get("scheduled_for")
+        )
+
+    except ScheduleError as ex:
+
+        return Response(
+            {
+                "error": str(ex)
+            },
+            status=400
+        )
+
+    try:
+
         key = ApiKey.objects.get(
             api_key=api_key,
             enabled=True
@@ -244,8 +281,19 @@ def send_sms(request):
     log = _queue_sms(
         subscriber=subscriber,
         recipient=recipient,
-        message=message
+        message=message,
+        scheduled_for=scheduled_for
     )
+
+    if scheduled_for is not None:
+
+        return Response(
+            {
+                "status": "scheduled",
+                "log_id": log.id,
+                "scheduled_for": scheduled_for
+            }
+        )
 
     return Response(
         {
@@ -338,6 +386,7 @@ def api_messages(request):
                     "message": log.message,
                     "status": log.status,
                     "created_at": log.created_at,
+                    "scheduled_for": log.scheduled_for,
                     "sent_at": log.sent_at,
                     "error": (
                         log.error_message if log.status == "FAILED" else ""
@@ -345,6 +394,80 @@ def api_messages(request):
                 }
                 for log in logs
             ],
+        }
+    )
+
+
+@api_view(["POST"])
+@authentication_classes([])
+def api_cancel_message(request, log_id):
+    """
+    Lets an API-key client cancel one of its own SCHEDULED messages.
+    """
+
+    api_key = _extract_api_key(
+        request
+    )
+
+    if not api_key:
+
+        return Response(
+            {
+                "error": "api_key required"
+            },
+            status=400
+        )
+
+    key = ApiKey.objects.select_related(
+        "subscriber"
+    ).filter(
+        api_key=api_key,
+        enabled=True
+    ).first()
+
+    if key is None or not key.subscriber.active:
+
+        return Response(
+            {
+                "error": "invalid api key"
+            },
+            status=403
+        )
+
+    log = SmsLog.objects.filter(
+        id=log_id,
+        subscriber=key.subscriber
+    ).first()
+
+    if log is None:
+
+        return Response(
+            {
+                "error": "message not found"
+            },
+            status=404
+        )
+
+    cancelled = SmsLog.objects.filter(
+        id=log.id,
+        status="SCHEDULED"
+    ).update(
+        status="CANCELLED"
+    )
+
+    if not cancelled:
+
+        return Response(
+            {
+                "error": "only scheduled messages can be cancelled"
+            },
+            status=409
+        )
+
+    return Response(
+        {
+            "status": "cancelled",
+            "log_id": log.id
         }
     )
 
@@ -363,6 +486,18 @@ def department_send_sms(request):
         return Response(
             {
                 "error": "message required"
+            },
+            status=400
+        )
+
+    try:
+        scheduled_for = parse_scheduled_for(
+            request.data.get("scheduled_for")
+        )
+    except ScheduleError as ex:
+        return Response(
+            {
+                "error": str(ex)
             },
             status=400
         )
@@ -502,16 +637,34 @@ def department_send_sms(request):
     contacts = contacts.distinct()
 
     queued = 0
+    batch_id = uuid.uuid4() if scheduled_for is not None else None
+    log_ids = []
 
     for contact in contacts:
-        _queue_sms(
+        log = _queue_sms(
             subscriber=None,
             recipient=contact.mobile_number,
             message=message,
             sent_by=request.user,
-            recipient_name=str(contact).strip()
+            recipient_name=str(contact).strip(),
+            scheduled_for=scheduled_for,
+            batch_id=batch_id
         )
+        log_ids.append(log.id)
         queued += 1
+
+    if scheduled_for is not None:
+
+        return Response(
+            {
+                "status": "scheduled",
+                "target": target_label,
+                "contacts": queued,
+                "scheduled_for": scheduled_for,
+                "batch_id": batch_id,
+                "log_ids": log_ids
+            }
+        )
 
     return Response(
         {
@@ -550,10 +703,31 @@ class SmsLogViewSet(ModelViewSet):
 
         status_filter = self.request.query_params.get("status")
         subscriber_id = self.request.query_params.get("subscriber_id")
+        batch_id = self.request.query_params.get("batch_id")
+        ordering = self.request.query_params.get("ordering")
 
         if status_filter:
             queryset = queryset.filter(
                 status=status_filter.upper()
+            )
+
+        if batch_id:
+            try:
+                queryset = queryset.filter(
+                    batch_id=uuid.UUID(batch_id)
+                )
+            except ValueError:
+                queryset = queryset.none()
+
+        if ordering in (
+            "scheduled_for",
+            "-scheduled_for",
+            "created_at",
+            "-created_at",
+        ):
+            queryset = queryset.order_by(
+                ordering,
+                "id"
             )
 
         if subscriber_id:
@@ -712,6 +886,189 @@ class SmsLogViewSet(ModelViewSet):
             status=status.HTTP_202_ACCEPTED
         )
 
+    def _parse_ids(self, request):
+
+        ids = request.data.get("ids")
+
+        if not isinstance(ids, list) or not ids:
+            return None, Response(
+                {"detail": "ids must be a non-empty list."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            return list(dict.fromkeys(int(log_id) for log_id in ids)), None
+        except (TypeError, ValueError):
+            return None, Response(
+                {"detail": "ids must contain valid message IDs."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(
+        detail=True,
+        methods=["post"]
+    )
+    def cancel(self, request, pk=None):
+        """
+        Cancels one SCHEDULED message before it is sent. The status flip
+        is a conditional UPDATE, so if the dispatcher releases the
+        message at the same moment, exactly one of the two wins.
+        """
+
+        log = self.get_object()
+
+        cancelled = SmsLog.objects.filter(
+            id=log.id,
+            status="SCHEDULED"
+        ).update(
+            status="CANCELLED"
+        )
+
+        if not cancelled:
+            return Response(
+                {"detail": "Only scheduled messages can be cancelled."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        log.refresh_from_db()
+
+        return Response(
+            self.get_serializer(log).data
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="bulk-cancel"
+    )
+    def bulk_cancel(self, request):
+        """
+        Cancels scheduled messages by `ids`, or a whole scheduled bulk
+        send by `batch_id`. Messages that are not (or are no longer)
+        SCHEDULED are skipped, not errors.
+        """
+
+        queryset = self.get_queryset().filter(
+            status="SCHEDULED"
+        )
+
+        batch_id = request.data.get("batch_id")
+
+        if batch_id:
+
+            try:
+                queryset = queryset.filter(
+                    batch_id=uuid.UUID(str(batch_id))
+                )
+            except ValueError:
+                return Response(
+                    {"detail": "batch_id is not valid."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            requested = None
+
+        else:
+
+            ids, error_response = self._parse_ids(request)
+
+            if error_response:
+                return error_response
+
+            queryset = queryset.filter(id__in=ids)
+            requested = len(ids)
+
+        cancelled = SmsLog.objects.filter(
+            id__in=list(queryset.values_list("id", flat=True)),
+            status="SCHEDULED"
+        ).update(
+            status="CANCELLED"
+        )
+
+        return Response(
+            {
+                "cancelled": cancelled,
+                "skipped": (
+                    requested - cancelled
+                    if requested is not None else 0
+                ),
+            }
+        )
+
+    @action(
+        detail=True,
+        methods=["post"]
+    )
+    def reschedule(self, request, pk=None):
+        """
+        Moves one SCHEDULED message to a new time (`scheduled_for`).
+        """
+
+        log = self.get_object()
+
+        try:
+            scheduled_for = parse_scheduled_for(
+                request.data.get("scheduled_for")
+            )
+        except ScheduleError as ex:
+            return Response(
+                {"detail": str(ex)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if scheduled_for is None:
+            return Response(
+                {"detail": "scheduled_for is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        changed = SmsLog.objects.filter(
+            id=log.id,
+            status="SCHEDULED"
+        ).update(
+            scheduled_for=scheduled_for
+        )
+
+        if not changed:
+            return Response(
+                {"detail": "Only scheduled messages can be rescheduled."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        log.refresh_from_db()
+
+        return Response(
+            self.get_serializer(log).data
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="send-now"
+    )
+    def send_now(self, request, pk=None):
+        """
+        Releases one SCHEDULED message immediately instead of waiting for
+        its time.
+        """
+
+        log = self.get_object()
+
+        if log.status != "SCHEDULED":
+            return Response(
+                {"detail": "Only scheduled messages can be sent now."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        release_scheduled_log(log.id)
+
+        log.refresh_from_db()
+
+        return Response(
+            self.get_serializer(log).data,
+            status=status.HTTP_202_ACCEPTED
+        )
+
     @action(
         detail=False,
         methods=["post"],
@@ -740,6 +1097,7 @@ class SmsLogViewSet(ModelViewSet):
             status__in=[
                 "SENT",
                 "FAILED",
+                "CANCELLED",
             ],
         )
         deleted = deletable.count()

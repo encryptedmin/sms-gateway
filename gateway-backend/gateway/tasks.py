@@ -10,6 +10,7 @@ from .models import SmsLog
 from .models import Subscription
 from .modem_subprocess import send_sms_with_hard_timeout
 from .services import Sim800Service
+from .sms_errors import ACCOUNT_BLOCKED
 from .sms_errors import RECIPIENT_BUSY
 from .sms_errors import UNKNOWN
 from .sms_errors import classify_failure
@@ -152,6 +153,20 @@ def process_sms(self, log_id):
     # same task), not something that happens on its own in the
     # background — which is also why there's no more RETRYING status
     # or backoff scheduling to reason about here.
+    if log.status in ("SCHEDULED", "CANCELLED"):
+
+        # Never send a message that is still waiting for its time or was
+        # cancelled, even if a stray task for it shows up. Scheduled rows
+        # reach this task only via release_scheduled_log(), which first
+        # moves them to PENDING.
+        logger.warning(
+            "SmsLog %s is %s, not sending",
+            log_id,
+            log.status
+        )
+
+        return False
+
     try:
 
         port = _pick_modem_port(log_id)
@@ -280,3 +295,136 @@ def process_sms(self, log_id):
             f"Unexpected error: {ex}",
             UNKNOWN
         )
+
+
+
+def _account_block_reason(subscriber):
+    """
+    Why a subscriber's scheduled message can no longer be sent, or None.
+    The same rules send_sms applies to an immediate API-key send, checked
+    again at release time because days can pass between scheduling and
+    sending (account disabled, plan changed, quota used up).
+    """
+
+    if not subscriber.active:
+        return "Subscriber account is inactive."
+
+    subscription = Subscription.objects.select_related(
+        "plan"
+    ).filter(
+        subscriber=subscriber,
+        status="ACTIVE"
+    ).first()
+
+    if not subscription:
+        return "No active subscription for this account."
+
+    if not subscription.has_quota_remaining():
+        return (
+            "Monthly message limit reached for this plan. Retry after "
+            "the period resets."
+        )
+
+    return None
+
+
+def release_scheduled_log(log_id):
+    """
+    Hands one due SCHEDULED message to the normal send pipeline.
+
+    The SCHEDULED -> PENDING flip is a single conditional UPDATE, so if a
+    cancel, a reschedule, "send now" and the dispatcher race, exactly one
+    of them wins; the others see zero rows changed and do nothing. That
+    also makes releasing idempotent: a message can never be queued twice.
+
+    Returns True if the message was queued for sending.
+    """
+
+    claimed = SmsLog.objects.filter(
+        id=log_id,
+        status="SCHEDULED"
+    ).update(
+        status="PENDING"
+    )
+
+    if not claimed:
+        return False
+
+    log = SmsLog.objects.select_related(
+        "subscriber"
+    ).get(
+        id=log_id
+    )
+
+    if log.subscriber_id:
+
+        reason = _account_block_reason(
+            log.subscriber
+        )
+
+        if reason:
+
+            _mark_failed(
+                log,
+                reason,
+                ACCOUNT_BLOCKED
+            )
+
+            return False
+
+    try:
+
+        process_sms.delay(
+            log.id
+        )
+
+    except Exception as ex:
+
+        _mark_failed(
+            log,
+            f"Could not queue for sending: {ex}",
+            UNKNOWN
+        )
+
+        return False
+
+    return True
+
+
+@shared_task
+def dispatch_due_scheduled_sms(batch_size=200):
+    """
+    Run every few seconds by Celery beat (CELERY_BEAT_SCHEDULE). Releases
+    messages whose scheduled_for has arrived, oldest first. batch_size
+    bounds one tick's work; anything left over is picked up by the next.
+    """
+
+    due_ids = list(
+        SmsLog.objects.filter(
+            status="SCHEDULED",
+            scheduled_for__lte=timezone.now()
+        ).order_by(
+            "scheduled_for",
+            "id"
+        ).values_list(
+            "id",
+            flat=True
+        )[:batch_size]
+    )
+
+    released = 0
+
+    for log_id in due_ids:
+
+        if release_scheduled_log(log_id):
+            released += 1
+
+    if due_ids:
+
+        logger.info(
+            "Scheduled SMS: %s due, %s released",
+            len(due_ids),
+            released
+        )
+
+    return released

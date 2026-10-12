@@ -47,6 +47,18 @@ services:
       redis:
         condition: service_healthy
 
+  # Releases scheduled messages when they fall due. Run exactly one.
+  beat:
+    <<: *backend
+    command: celery -A core beat -l info --schedule /tmp/celerybeat-schedule
+    environment:
+      <<: *backend-env
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
   frontend:
     build: ./frontend
     restart: unless-stopped

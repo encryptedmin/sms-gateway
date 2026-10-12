@@ -285,6 +285,24 @@ SMS_MODEM_BAUDRATE = 115200
 
 SMS_DEV_MODE = False
 
+# --- Scheduled sending ----------------------------------------------------
+#
+# Scheduled messages wait in the database (SmsLog.status == "SCHEDULED") and
+# are released by a periodic task; see gateway/scheduling.py for why this is
+# not done with Celery's `eta`. Celery *beat* must be running for scheduled
+# messages to go out:  celery -A core beat -l info
+SMS_SCHEDULE_MAX_DAYS = 365
+SMS_SCHEDULE_PAST_TOLERANCE_SECONDS = 60
+
+CELERY_BEAT_SCHEDULE = {
+    "dispatch-scheduled-sms": {
+        "task": "gateway.tasks.dispatch_due_scheduled_sms",
+        "schedule": 10.0,
+        # If the worker is down, don't pile up a backlog of ticks.
+        "options": {"expires": 30},
+    },
+}
+
 # Hard wall-clock cap on a single send attempt (across however many
 # candidate modems Sim800Service.send_sms tries internally), enforced
 # via a killable child process — see gateway/modem_subprocess.py for
