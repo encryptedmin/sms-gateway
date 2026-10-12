@@ -150,7 +150,7 @@ export default function ContactsPage() {
       }
       setIsFormOpen(false);
     } catch {
-      showToast("Couldn't save this contact. Check the mobile number isn't already used.", "error");
+      showToast("Couldn't save this contact. Check that the mobile number isn't already in your contacts.", "error");
     } finally {
       setIsSubmitting(false);
     }

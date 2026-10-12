@@ -308,16 +308,6 @@ class ContactViewSet(ModelViewSet):
                 invalid += 1
                 continue
 
-            contact = Contact.objects.filter(
-                mobile_number=mobile_number
-            ).first()
-
-            if contact and not manageable_contacts_for_user(
-                request.user
-            ).filter(id=contact.id).exists():
-                skipped += 1
-                continue
-
             defaults = {
                 "first_name": first_name,
                 "last_name": (
@@ -346,17 +336,10 @@ class ContactViewSet(ModelViewSet):
             }
 
             contact, was_created = Contact.objects.update_or_create(
+                owner=request.user,
                 mobile_number=mobile_number,
                 defaults=defaults
             )
-
-            if was_created:
-                contact.owner = request.user
-                contact.save(
-                    update_fields=[
-                        "owner",
-                    ]
-                )
 
             if group:
                 contact.groups.add(

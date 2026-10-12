@@ -179,6 +179,10 @@ class ContactSerializer(serializers.ModelSerializer):
             "can_manage",
             "created_at",
         ]
+        # Ownership is assigned by the view, so DRF cannot reliably apply
+        # the model's owner/mobile composite constraint during validation.
+        # validate_mobile_number performs the owner-scoped check instead.
+        validators = []
 
     def get_owner_name(self, obj):
 
@@ -210,9 +214,33 @@ class ContactSerializer(serializers.ModelSerializer):
     def validate_mobile_number(self, value):
 
         try:
-            return normalize_phone_number(value)
+            mobile_number = normalize_phone_number(value)
         except ValueError as ex:
             raise serializers.ValidationError(str(ex))
+
+        request = self.context.get("request")
+
+        if self.instance:
+            owner_id = self.instance.owner_id
+        elif request and request.user.is_authenticated:
+            owner_id = request.user.id
+        else:
+            owner_id = None
+
+        queryset = Contact.objects.filter(
+            owner_id=owner_id,
+            mobile_number=mobile_number,
+        )
+
+        if self.instance:
+            queryset = queryset.exclude(id=self.instance.id)
+
+        if queryset.exists():
+            raise serializers.ValidationError(
+                "You already have a contact with this mobile number."
+            )
+
+        return mobile_number
 
     def validate_groups(self, value):
 

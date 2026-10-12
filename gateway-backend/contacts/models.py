@@ -90,7 +90,6 @@ class Contact(models.Model):
 
     mobile_number = models.CharField(
         max_length=20,
-        unique=True,
         validators=[validate_mobile_number]
     )
 
@@ -133,6 +132,24 @@ class Contact(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "owner",
+                    "mobile_number",
+                ],
+                name="unique_contact_mobile_per_owner",
+            ),
+            models.UniqueConstraint(
+                fields=[
+                    "mobile_number",
+                ],
+                condition=models.Q(owner__isnull=True),
+                name="unique_unowned_contact_mobile",
+            ),
+        ]
 
     def __str__(self):
 
