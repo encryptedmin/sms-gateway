@@ -161,7 +161,15 @@ export default function ContactsPage() {
     try {
       const summary = await importContactsCsv(file, groupId, isShared);
       await loadData();
-      showToast("CSV imported.");
+      const imported = (summary.created ?? 0) + (summary.updated ?? 0);
+      const rejected = (summary.skipped ?? 0) + (summary.invalid ?? 0);
+      if (imported === 0) {
+        showToast("No contacts were imported. Review the CSV format and rejected rows.", "error");
+      } else if (rejected > 0) {
+        showToast(`Imported ${imported} contact(s); ${rejected} row(s) need attention.`, "error");
+      } else {
+        showToast(`Successfully imported ${imported} contact(s).`);
+      }
       return summary;
     } catch {
       showToast("Couldn't import that file. Check its formatting and try again.", "error");

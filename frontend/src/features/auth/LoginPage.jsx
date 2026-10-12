@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { getHomeRouteForRole } from "../../utils/roles";
 import BrandPanel from "./components/BrandPanel";
@@ -7,14 +7,28 @@ import LoginForm from "./components/LoginForm";
 import "./LoginPage.css";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, isAuthenticated, isBootstrapping } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  async function handleSubmit({ username, password, rememberMe }) {
+  if (isBootstrapping) {
+    return (
+      <div className="d-flex vh-100 align-items-center justify-content-center">
+        <div className="spinner-border text-success" role="status">
+          <span className="visually-hidden">Loading…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to={getHomeRouteForRole(user.role)} replace />;
+  }
+
+  async function handleSubmit({ username, password }) {
     setErrorMessage("");
 
     if (!username.trim() || !password) {
@@ -25,7 +39,7 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const user = await login(username.trim(), password, rememberMe);
+      const user = await login(username.trim(), password);
       const homeRoute = getHomeRouteForRole(user.role);
 
       const requestedPath = location.state?.from?.pathname;

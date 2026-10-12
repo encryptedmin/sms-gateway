@@ -10,10 +10,19 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Local configuration may live beside compose.yaml (the repository root) or
+# beside manage.py. Real environment variables always take precedence, which
+# also makes this work unchanged in production and across repository clones.
+load_dotenv(BASE_DIR.parent / ".env")
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -25,7 +34,16 @@ SECRET_KEY = 'django-insecure-_2ye7gv#*#$44pq9id67dt*s2b*awt$5j$*lw9&o=el2ubli6q
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+SMS_SITE_HOST = os.getenv("SMS_SITE_HOST", "sms.ite")
+
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv(
+        "DJANGO_ALLOWED_HOSTS",
+        f"{SMS_SITE_HOST},127.0.0.1,localhost",
+    ).split(",")
+    if host.strip()
+]
 
 
 # Application definition
@@ -128,17 +146,61 @@ STATIC_URL = 'static/'
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "users.authentication.SingleSessionJWTAuthentication",
     )
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+_default_browser_origins = (
+    f"http://{SMS_SITE_HOST},"
+    f"http://{SMS_SITE_HOST}:5173,"
+    "http://127.0.0.1:5173,"
+    "http://localhost:5173"
+)
+
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        _default_browser_origins,
+    ).split(",")
+    if origin.strip()
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CSRF_TRUSTED_ORIGINS",
+        f"http://{SMS_SITE_HOST}",
+    ).split(",")
+    if origin.strip()
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+# A browser session is shared by all tabs but discarded when the browser
+# closes. JWTs are accepted only when accompanied by this matching cookie.
+SESSION_COOKIE_NAME = "sms_gateway_device_session"
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_HTTPONLY = True
 
 AUTH_USER_MODEL = "users.User"
 
-CELERY_BROKER_URL = "redis://localhost:6379"
+REDIS_URL = os.getenv(
+    "REDIS_URL",
+    (
+        f"redis://{os.getenv('REDIS_HOST', '127.0.0.1')}:"
+        f"{os.getenv('REDIS_PORT', '6379')}/"
+        f"{os.getenv('REDIS_DB', '0')}"
+    ),
+)
 
-CELERY_RESULT_BACKEND = "redis://localhost:6379"
+# Either Celery URL can be overridden independently for a hosted broker. For
+# normal local use, the broker, result backend, recipient locks, and modem
+# status cooldown all share REDIS_URL.
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL)
+
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
 
 CELERY_ACCEPT_CONTENT = [
     "json"

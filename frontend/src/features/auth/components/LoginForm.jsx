@@ -5,13 +5,11 @@ import AlertBanner from "./AlertBanner";
 export default function LoginForm({ onSubmit, isSubmitting, errorMessage, onDismissError }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(true);
   const usernameId = useId();
-  const rememberId = useId();
 
   function handleSubmit(event) {
     event.preventDefault();
-    onSubmit({ username, password, rememberMe });
+    onSubmit({ username, password });
   }
 
   return (
@@ -50,21 +48,9 @@ export default function LoginForm({ onSubmit, isSubmitting, errorMessage, onDism
         required
       />
 
-      <div className="d-flex align-items-center justify-content-between mb-4">
-        <div className="form-check">
-          <input
-            id={rememberId}
-            type="checkbox"
-            className="form-check-input sg-checkbox"
-            checked={rememberMe}
-            onChange={(event) => setRememberMe(event.target.checked)}
-            disabled={isSubmitting}
-          />
-          <label htmlFor={rememberId} className="form-check-label sg-checkbox-label">
-            Keep me signed in
-          </label>
-        </div>
-      </div>
+      <p className="sg-cell-muted mb-4" style={{ fontSize: "0.8rem" }}>
+        For your security, closing this browser signs you out.
+      </p>
 
       <button type="submit" className="btn sg-submit-btn w-100" disabled={isSubmitting}>
         {isSubmitting ? (

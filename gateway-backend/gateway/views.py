@@ -731,7 +731,7 @@ def _serialize_modem_statuses():
 
 
 @api_view(["GET"])
-@permission_classes([IsAdminRole])
+@permission_classes([CanSendSms])
 def modem_status(request):
     """
     Read-only — returns whatever was last recorded, never touches the
@@ -747,7 +747,7 @@ def modem_status(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAdminRole])
+@permission_classes([CanSendSms])
 def modem_status_check(request):
     """
     The deliberate "check now" action — scans every serial port on the

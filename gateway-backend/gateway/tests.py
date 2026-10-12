@@ -13,6 +13,7 @@ from users.models import User
 
 from .models import ApiKey
 from .models import SmsLog
+from .models import Subscription
 
 
 class GatewayApiTests(TestCase):
@@ -38,6 +39,18 @@ class GatewayApiTests(TestCase):
 
     @patch("gateway.views.process_sms.delay")
     def test_send_sms_accepts_bearer_api_key(self, delay):
+
+        plan = Plan.objects.create(
+            plan_name="Gateway access",
+            description="Unlimited test plan",
+            price=0,
+            payment_type="test",
+            plan_type="UNLIMITED",
+        )
+        Subscription.objects.create(
+            subscriber=self.subscriber,
+            plan=plan,
+        )
 
         response = self.client.post(
             "/api/send-sms/",
@@ -171,3 +184,81 @@ class GatewayApiTests(TestCase):
             0
         )
         delay.assert_not_called()
+
+
+class InstructorSmsIsolationTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.instructor = User.objects.create_user(
+            username="instructor-one",
+            email="one@example.com",
+            password="pass12345",
+            first_name="Instructor",
+            last_name="One",
+            role="INSTRUCTOR",
+        )
+        self.other_instructor = User.objects.create_user(
+            username="instructor-two",
+            email="two@example.com",
+            password="pass12345",
+            first_name="Instructor",
+            last_name="Two",
+            role="INSTRUCTOR",
+        )
+        self.own_logs = [
+            SmsLog.objects.create(
+                sent_by=self.instructor,
+                recipient=f"0912345678{index}",
+                message=f"Own message {index}",
+                status=status,
+                error_message="Temporary failure" if status == "FAILED" else "",
+            )
+            for index, status in enumerate(["SENT", "PENDING", "FAILED"])
+        ]
+        self.other_log = SmsLog.objects.create(
+            sent_by=self.other_instructor,
+            recipient="09999999999",
+            message="Another instructor's message",
+            status="FAILED",
+            error_message="Temporary failure",
+        )
+        self.client.force_authenticate(user=self.instructor)
+
+    def test_history_and_status_counts_only_include_the_current_instructor(self):
+        logs_response = self.client.get("/api/logs/")
+        stats_response = self.client.get("/api/dashboard/stats/")
+
+        self.assertEqual(logs_response.status_code, 200)
+        self.assertSetEqual(
+            {row["id"] for row in logs_response.data},
+            {log.id for log in self.own_logs},
+        )
+        self.assertEqual(
+            stats_response.data,
+            {
+                "total_messages": 3,
+                "sent_messages": 1,
+                "failed_messages": 1,
+                "pending_messages": 1,
+            },
+        )
+
+    @patch("gateway.views.process_sms.delay")
+    def test_instructor_can_retry_only_their_own_failed_message(self, delay):
+        own_failed = next(log for log in self.own_logs if log.status == "FAILED")
+
+        own_response = self.client.post(f"/api/logs/{own_failed.id}/retry/")
+        other_response = self.client.post(f"/api/logs/{self.other_log.id}/retry/")
+
+        self.assertEqual(own_response.status_code, 202)
+        self.assertEqual(other_response.status_code, 404)
+        own_failed.refresh_from_db()
+        self.assertEqual(own_failed.status, "PENDING")
+        delay.assert_called_once_with(own_failed.id)
+
+    def test_instructor_can_view_the_modem_signal_indicator(self):
+        response = self.client.get("/api/modem-status/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("modems", response.data)

@@ -31,7 +31,7 @@ RECIPIENT_LOCK_WAIT_TIMEOUT_SECONDS = 40
 def _redis_client():
 
     return redis.Redis.from_url(
-        settings.CELERY_BROKER_URL
+        settings.REDIS_URL
     )
 
 

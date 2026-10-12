@@ -7,11 +7,23 @@ from users.views import department_admin_accounts
 from users.views import department_admin_account_detail
 from users.views import instructor_accounts
 from users.views import instructor_account_detail
+from users.views import logout
+from users.views import device_session
+from users.token_serializers import SingleSessionTokenObtainPairSerializer
+from users.token_serializers import SingleSessionTokenRefreshSerializer
 
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
 )
+
+
+class SingleSessionTokenObtainPairView(TokenObtainPairView):
+    serializer_class = SingleSessionTokenObtainPairSerializer
+
+
+class SingleSessionTokenRefreshView(TokenRefreshView):
+    serializer_class = SingleSessionTokenRefreshSerializer
 
 urlpatterns = [
 
@@ -29,14 +41,26 @@ urlpatterns = [
 
     path(
         "api/token/",
-        TokenObtainPairView.as_view(),
+        SingleSessionTokenObtainPairView.as_view(),
         name="token_obtain_pair"
     ),
 
     path(
         "api/token/refresh/",
-        TokenRefreshView.as_view(),
+        SingleSessionTokenRefreshView.as_view(),
         name="token_refresh"
+    ),
+
+    path(
+        "api/logout/",
+        logout,
+        name="logout"
+    ),
+
+    path(
+        "api/device-session/",
+        device_session,
+        name="device_session"
     ),
 
     path(

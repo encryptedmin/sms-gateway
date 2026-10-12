@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import * as authService from "../api/authService";
+import { SESSION_ENDED_EVENT } from "../api/axiosClient";
+import { SESSION_SYNC_KEY } from "../api/tokenStorage";
 
 const AuthContext = createContext(null);
 
@@ -11,18 +13,24 @@ export function AuthProvider({ children }) {
     let isMounted = true;
 
     async function bootstrapSession() {
-      if (!authService.hasStoredSession()) {
-        setIsBootstrapping(false);
-        return;
-      }
-
       try {
+        const deviceSession = await authService.getDeviceSession();
+
+        if (!deviceSession.active) {
+          authService.discardLocalSession();
+          return;
+        }
+
+        if (!authService.hasStoredSession()) {
+          return;
+        }
+
         const currentUser = await authService.getCurrentUser();
         if (isMounted) {
           setUser(currentUser);
         }
       } catch {
-        authService.logout();
+        authService.discardLocalSession();
       } finally {
         if (isMounted) {
           setIsBootstrapping(false);
@@ -37,15 +45,46 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  async function login(username, password, rememberMe) {
-    const loggedInUser = await authService.login(username, password, rememberMe);
+  useEffect(() => {
+    function handleSessionEnded() {
+      setUser(null);
+    }
+
+    window.addEventListener(SESSION_ENDED_EVENT, handleSessionEnded);
+    return () => window.removeEventListener(SESSION_ENDED_EVENT, handleSessionEnded);
+  }, []);
+
+  useEffect(() => {
+    async function handleStorage(event) {
+      if (event.key !== SESSION_SYNC_KEY || !event.newValue) return;
+
+      try {
+        const { active } = JSON.parse(event.newValue);
+        if (!active) {
+          setUser(null);
+          return;
+        }
+
+        const currentUser = await authService.getCurrentUser();
+        setUser(currentUser);
+      } catch {
+        setUser(null);
+      }
+    }
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
+  async function login(username, password) {
+    const loggedInUser = await authService.login(username, password);
     setUser(loggedInUser);
     return loggedInUser;
   }
 
   function logout() {
-    authService.logout();
     setUser(null);
+    void authService.logout();
   }
 
   const value = useMemo(

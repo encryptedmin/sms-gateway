@@ -1,40 +1,41 @@
-// Centralizes where auth tokens live so the rest of the app never touches
-// localStorage / sessionStorage directly.
+// Tokens use localStorage so every tab in the same browser sees one account.
+// They are usable only with the matching non-persistent server session cookie;
+// bootstrap removes them after the browser has been closed.
 
 const ACCESS_KEY = "sms_gateway_access";
 const REFRESH_KEY = "sms_gateway_refresh";
 const REMEMBER_KEY = "sms_gateway_remember";
+export const SESSION_SYNC_KEY = "sms_gateway_session_sync";
 
-function activeStorage() {
-  const remembered = localStorage.getItem(REMEMBER_KEY) === "true";
-  return remembered ? localStorage : sessionStorage;
+function announceSession(active) {
+  localStorage.setItem(
+    SESSION_SYNC_KEY,
+    JSON.stringify({ active, changedAt: Date.now() })
+  );
 }
 
-export function saveTokens({ access, refresh }, rememberMe) {
-  localStorage.setItem(REMEMBER_KEY, rememberMe ? "true" : "false");
-  const storage = rememberMe ? localStorage : sessionStorage;
-  const other = rememberMe ? sessionStorage : localStorage;
-
-  storage.setItem(ACCESS_KEY, access);
+export function saveTokens({ access, refresh }) {
+  localStorage.setItem(ACCESS_KEY, access);
   if (refresh) {
-    storage.setItem(REFRESH_KEY, refresh);
+    localStorage.setItem(REFRESH_KEY, refresh);
   }
 
-  // Make sure a stale copy in the other storage never wins.
-  other.removeItem(ACCESS_KEY);
-  other.removeItem(REFRESH_KEY);
+  sessionStorage.removeItem(ACCESS_KEY);
+  sessionStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem(REMEMBER_KEY);
+  announceSession(true);
 }
 
 export function getAccessToken() {
-  return activeStorage().getItem(ACCESS_KEY);
+  return localStorage.getItem(ACCESS_KEY);
 }
 
 export function getRefreshToken() {
-  return activeStorage().getItem(REFRESH_KEY);
+  return localStorage.getItem(REFRESH_KEY);
 }
 
 export function updateAccessToken(access) {
-  activeStorage().setItem(ACCESS_KEY, access);
+  localStorage.setItem(ACCESS_KEY, access);
 }
 
 export function clearTokens() {
@@ -43,4 +44,5 @@ export function clearTokens() {
   localStorage.removeItem(REMEMBER_KEY);
   sessionStorage.removeItem(ACCESS_KEY);
   sessionStorage.removeItem(REFRESH_KEY);
+  announceSession(false);
 }

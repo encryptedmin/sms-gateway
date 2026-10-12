@@ -1,0 +1,12 @@
+# Machine-specific environment configuration
+.env
+gateway-backend/.env
+
+# Runtime artifacts
+*.lock
+__pycache__/
+*.py[cod]
+
+# Python virtual environments
+.venv/
+venv/

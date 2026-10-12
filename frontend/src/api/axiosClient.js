@@ -6,10 +6,15 @@ import {
   clearTokens,
 } from "./tokenStorage";
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api";
+export const SESSION_ENDED_EVENT = "sms-gateway-session-ended";
+
+// In local development Vite proxies this same-origin path to Django. Keeping
+// the browser on sms.ite avoids leaking localhost into URLs and API traffic.
+const baseURL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 const axiosClient = axios.create({
   baseURL,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
@@ -31,7 +36,11 @@ async function refreshAccessToken() {
     throw new Error("No refresh token available");
   }
 
-  const response = await axios.post(`${baseURL}/token/refresh/`, { refresh });
+  const response = await axios.post(
+    `${baseURL}/token/refresh/`,
+    { refresh },
+    { withCredentials: true }
+  );
   const { access } = response.data;
   updateAccessToken(access);
   return access;
@@ -58,6 +67,7 @@ axiosClient.interceptors.response.use(
       } catch (refreshError) {
         refreshInFlight = null;
         clearTokens();
+        window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
         return Promise.reject(refreshError);
       }
     }

@@ -1,5 +1,6 @@
+import axios from "axios";
 import axiosClient from "./axiosClient";
-import { saveTokens, clearTokens, getAccessToken } from "./tokenStorage";
+import { saveTokens, clearTokens, getAccessToken, getRefreshToken } from "./tokenStorage";
 
 function extractErrorMessage(error) {
   const data = error?.response?.data;
@@ -22,14 +23,14 @@ function extractErrorMessage(error) {
   return "Invalid username or password.";
 }
 
-export async function login(username, password, rememberMe) {
+export async function login(username, password) {
   try {
     const tokenResponse = await axiosClient.post("/token/", {
       username,
       password,
     });
 
-    saveTokens(tokenResponse.data, rememberMe);
+    saveTokens(tokenResponse.data);
 
     const user = await getCurrentUser();
     return user;
@@ -44,8 +45,31 @@ export async function getCurrentUser() {
   return response.data;
 }
 
-export function logout() {
+export async function getDeviceSession() {
+  const response = await axiosClient.get("/device-session/");
+  return response.data;
+}
+
+export function discardLocalSession() {
   clearTokens();
+}
+
+export async function logout() {
+  const refresh = getRefreshToken();
+  clearTokens();
+
+  if (!refresh) return;
+
+  try {
+    await axios.post(
+      `${axiosClient.defaults.baseURL}/logout/`,
+      { refresh },
+      { withCredentials: true }
+    );
+  } catch {
+    // Local credentials are already gone. Logout stays safe and idempotent
+    // even when the API is temporarily unreachable.
+  }
 }
 
 export function hasStoredSession() {

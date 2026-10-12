@@ -1,10 +1,10 @@
 from rest_framework.decorators import api_view
+from rest_framework.decorators import authentication_classes
 from rest_framework.decorators import permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-
 from users.permissions import IsSuperAdmin
 from users.permissions import IsIteAdmin
 from users.models import User
@@ -13,6 +13,41 @@ from .serializers import DepartmentAdminCreateSerializer
 from .serializers import InstructorAccountSerializer
 from .serializers import DepartmentAdminAccountSerializer
 from .serializers import InstructorCreateSerializer
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([])
+def logout(request):
+    """End only this browser's session, leaving other devices signed in."""
+
+    request.session.flush()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([])
+def device_session(request):
+    """Report whether this browser already owns an active login."""
+
+    session_id = request.session.get("login_session_id")
+    user_id = request.session.get("login_user_id")
+    is_active = bool(
+        session_id
+        and user_id
+        and User.objects.filter(pk=user_id, is_active=True).exists()
+    )
+
+    if session_id and user_id and not is_active:
+        request.session.flush()
+
+    return Response(
+        {
+            "active": is_active,
+            "user_id": user_id if is_active else None,
+        }
+    )
 
 
 @api_view(["GET"])
