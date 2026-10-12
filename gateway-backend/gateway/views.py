@@ -63,12 +63,14 @@ def _queue_sms(
     subscriber,
     recipient,
     message,
-    sent_by=None
+    sent_by=None,
+    recipient_name=""
 ):
 
     log = SmsLog.objects.create(
         subscriber=subscriber,
         recipient=recipient,
+        recipient_name=recipient_name,
         message=message,
         status="PENDING",
         sent_by=sent_by
@@ -412,7 +414,8 @@ def department_send_sms(request):
             subscriber=None,
             recipient=contact.mobile_number,
             message=message,
-            sent_by=request.user
+            sent_by=request.user,
+            recipient_name=str(contact).strip()
         )
         queued += 1
 
@@ -478,6 +481,43 @@ class SmsLogViewSet(ModelViewSet):
 
         return context
 
+    @staticmethod
+    def _queue_retry(log, policy):
+
+        if log.status != "FAILED":
+            return "Only failed messages can be retried.", status.HTTP_400_BAD_REQUEST
+
+        if log.attempts > policy.max_retries:
+            return (
+                "This message has already used its "
+                f"{policy.max_retries} allowed retry attempt(s).",
+                status.HTTP_400_BAD_REQUEST,
+            )
+
+        log.status = "PENDING"
+        log.error_message = ""
+        log.failure_category = ""
+        log.save(
+            update_fields=[
+                "status",
+                "error_message",
+                "failure_category",
+            ]
+        )
+
+        try:
+            process_sms.delay(log.id)
+        except Exception as ex:
+            log.status = "FAILED"
+            log.error_message = f"Could not queue retry: {ex}"
+            log.response_message = log.error_message
+            log.failure_category = "UNKNOWN"
+            log.save()
+
+            return log.error_message, status.HTTP_502_BAD_GATEWAY
+
+        return None, None
+
     @action(
         detail=True,
         methods=["post"]
@@ -496,67 +536,126 @@ class SmsLogViewSet(ModelViewSet):
         """
 
         log = self.get_object()
-
-        if log.status != "FAILED":
-
-            return Response(
-                {"detail": "Only failed messages can be retried."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
         policy = SmsRetryPolicy.current()
+        error, error_status = self._queue_retry(log, policy)
 
-        if log.attempts > policy.max_retries:
-
+        if error:
             return Response(
-                {
-                    "detail": (
-                        "This message has already used its "
-                        f"{policy.max_retries} allowed retry attempt(s)."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        log.status = "PENDING"
-        log.error_message = ""
-        log.failure_category = ""
-        log.save(
-            update_fields=[
-                "status",
-                "error_message",
-                "failure_category",
-            ]
-        )
-
-        try:
-
-            process_sms.delay(
-                log.id
-            )
-
-        except Exception as ex:
-
-            # Same reasoning as _queue_sms in send_sms/department_send_sms
-            # below: if Celery/Redis can't even accept the task, don't
-            # leave this row sitting at PENDING with no task ever
-            # created to act on it — go straight back to FAILED with a
-            # reason so the Retry button is available again.
-
-            log.status = "FAILED"
-            log.error_message = f"Could not queue retry: {ex}"
-            log.response_message = log.error_message
-            log.failure_category = "UNKNOWN"
-            log.save()
-
-            return Response(
-                {"detail": log.error_message},
-                status=status.HTTP_502_BAD_GATEWAY
+                {"detail": error},
+                status=error_status
             )
 
         return Response(
             self.get_serializer(log).data,
             status=status.HTTP_202_ACCEPTED
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="bulk-retry"
+    )
+    def bulk_retry(self, request):
+
+        ids = request.data.get("ids")
+
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {"detail": "ids must be a non-empty list."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            ids = list(dict.fromkeys(int(log_id) for log_id in ids))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "ids must contain valid message IDs."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        accessible_logs = {
+            log.id: log
+            for log in self.get_queryset().filter(id__in=ids)
+        }
+        policy = SmsRetryPolicy.current()
+        retried_logs = []
+        skipped = 0
+        failed_to_queue = []
+
+        for log_id in ids:
+            log = accessible_logs.get(log_id)
+
+            if not log:
+                skipped += 1
+                continue
+
+            error, error_status = self._queue_retry(log, policy)
+
+            if error:
+                if error_status == status.HTTP_502_BAD_GATEWAY:
+                    failed_to_queue.append(
+                        {
+                            "id": log.id,
+                            "detail": error,
+                        }
+                    )
+                else:
+                    skipped += 1
+                continue
+
+            retried_logs.append(log)
+
+        return Response(
+            {
+                "retried": len(retried_logs),
+                "skipped": skipped,
+                "failed_to_queue": failed_to_queue,
+                "logs": self.get_serializer(
+                    retried_logs,
+                    many=True
+                ).data,
+            },
+            status=status.HTTP_202_ACCEPTED
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="bulk-delete"
+    )
+    def bulk_delete(self, request):
+
+        ids = request.data.get("ids")
+
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {"detail": "ids must be a non-empty list."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            ids = list(dict.fromkeys(int(log_id) for log_id in ids))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "ids must contain valid message IDs."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        deletable = self.get_queryset().filter(
+            id__in=ids,
+            status__in=[
+                "SENT",
+                "FAILED",
+            ],
+        )
+        deleted = deletable.count()
+        deletable.delete()
+
+        return Response(
+            {
+                "deleted": deleted,
+                "skipped": len(ids) - deleted,
+            }
         )
 
 

@@ -14,3 +14,13 @@ export async function retrySmsLog(id) {
   const response = await axiosClient.post(`/logs/${id}/retry/`);
   return response.data;
 }
+
+export async function bulkRetrySmsLogs(ids) {
+  const response = await axiosClient.post("/logs/bulk-retry/", { ids });
+  return response.data;
+}
+
+export async function bulkDeleteSmsLogs(ids) {
+  const response = await axiosClient.post("/logs/bulk-delete/", { ids });
+  return response.data;
+}

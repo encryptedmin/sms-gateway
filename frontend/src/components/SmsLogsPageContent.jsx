@@ -1,0 +1,439 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  bulkDeleteSmsLogs,
+  bulkRetrySmsLogs,
+  getDashboardStats,
+  listSmsLogs,
+  retrySmsLog,
+} from "../api/smsLogsService";
+import { useToast } from "../context/ToastContext";
+import { formatDateTime } from "../utils/formatters";
+import ConfirmDialog from "./ConfirmDialog";
+import StatCard from "./StatCard";
+import StatusBadge from "./StatusBadge";
+
+const STATUS_OPTIONS = ["ALL", "PENDING", "SENT", "FAILED"];
+const AUTO_REFRESH_INTERVAL_MS = 15000;
+const DELETABLE_STATUSES = new Set(["SENT", "FAILED"]);
+
+function senderName(log) {
+  return log.sent_by_name || log.subscriber_name || "System";
+}
+
+export default function SmsLogsPageContent({ description, autoRefreshId }) {
+  const { showToast } = useToast();
+  const [logs, setLogs] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [retryingIds, setRetryingIds] = useState(new Set());
+  const [isBulkRetrying, setIsBulkRetrying] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    loadLogs({ silent: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
+
+  useEffect(() => {
+    if (autoRefresh) {
+      intervalRef.current = window.setInterval(() => {
+        loadLogs({ silent: true });
+      }, AUTO_REFRESH_INTERVAL_MS);
+    }
+
+    return () => window.clearInterval(intervalRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRefresh, statusFilter]);
+
+  async function loadLogs({ silent }) {
+    if (!silent) setIsLoading(true);
+
+    try {
+      const params = statusFilter !== "ALL" ? { status: statusFilter } : {};
+      const [logData, statData] = await Promise.all([
+        listSmsLogs(params),
+        getDashboardStats(),
+      ]);
+      setLogs(logData);
+      setStats(statData);
+
+      const selectableIds = new Set(
+        logData
+          .filter((log) => DELETABLE_STATUSES.has(log.status))
+          .map((log) => log.id)
+      );
+      setSelectedIds((current) =>
+        new Set([...current].filter((id) => selectableIds.has(id)))
+      );
+    } catch {
+      if (!silent) showToast("Couldn't load SMS logs.", "error");
+    } finally {
+      if (!silent) setIsLoading(false);
+    }
+  }
+
+  async function handleRetry(id) {
+    setRetryingIds((current) => new Set(current).add(id));
+
+    try {
+      const updated = await retrySmsLog(id);
+      setLogs((current) =>
+        current.map((log) => (log.id === id ? { ...log, ...updated } : log))
+      );
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+      showToast("Message re-queued for sending.", "success");
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      showToast(detail || "Couldn't retry this message.", "error");
+    } finally {
+      setRetryingIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    }
+  }
+
+  const filteredLogs = useMemo(() => {
+    if (!searchTerm.trim()) return logs;
+
+    const term = searchTerm.trim().toLowerCase();
+    return logs.filter(
+      (log) =>
+        (log.recipient_name || "").toLowerCase().includes(term) ||
+        log.recipient.toLowerCase().includes(term) ||
+        senderName(log).toLowerCase().includes(term) ||
+        log.message.toLowerCase().includes(term)
+    );
+  }, [logs, searchTerm]);
+
+  const selectableLogs = useMemo(
+    () => filteredLogs.filter((log) => DELETABLE_STATUSES.has(log.status)),
+    [filteredLogs]
+  );
+
+  const selectedLogs = useMemo(
+    () => logs.filter((log) => selectedIds.has(log.id)),
+    [logs, selectedIds]
+  );
+
+  const retryableSelectedIds = useMemo(
+    () =>
+      selectedLogs
+        .filter((log) => log.status === "FAILED" && log.can_retry)
+        .map((log) => log.id),
+    [selectedLogs]
+  );
+
+  const allVisibleSelected =
+    selectableLogs.length > 0 && selectableLogs.every((log) => selectedIds.has(log.id));
+  const someVisibleSelected = selectableLogs.some((log) => selectedIds.has(log.id));
+
+  function toggleSelected(id) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+
+      if (allVisibleSelected) {
+        selectableLogs.forEach((log) => next.delete(log.id));
+      } else {
+        selectableLogs.forEach((log) => next.add(log.id));
+      }
+
+      return next;
+    });
+  }
+
+  async function handleBulkRetry() {
+    if (retryableSelectedIds.length === 0) return;
+
+    setIsBulkRetrying(true);
+    setRetryingIds((current) => new Set([...current, ...retryableSelectedIds]));
+
+    try {
+      const result = await bulkRetrySmsLogs(retryableSelectedIds);
+      const updatedById = new Map(result.logs.map((log) => [log.id, log]));
+      setLogs((current) =>
+        current.map((log) =>
+          updatedById.has(log.id) ? { ...log, ...updatedById.get(log.id) } : log
+        )
+      );
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        result.logs.forEach((log) => next.delete(log.id));
+        return next;
+      });
+
+      if (result.failed_to_queue.length > 0) {
+        showToast(
+          `Re-queued ${result.retried} message(s); ${result.failed_to_queue.length} could not be queued.`,
+          "error"
+        );
+      } else {
+        showToast(`Re-queued ${result.retried} failed message(s).`, "success");
+      }
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      showToast(detail || "Couldn't retry the selected messages.", "error");
+    } finally {
+      setRetryingIds((current) => {
+        const next = new Set(current);
+        retryableSelectedIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      setIsBulkRetrying(false);
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = selectedLogs
+      .filter((log) => DELETABLE_STATUSES.has(log.status))
+      .map((log) => log.id);
+
+    if (ids.length === 0) return;
+
+    setIsDeleting(true);
+
+    try {
+      const result = await bulkDeleteSmsLogs(ids);
+      setShowDeleteConfirm(false);
+      setSelectedIds(new Set());
+      await loadLogs({ silent: true });
+      showToast(`Deleted ${result.deleted} message log(s).`, "success");
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      showToast(detail || "Couldn't delete the selected message logs.", "error");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  return (
+    <div>
+      {description && <p className="text-muted mb-3">{description}</p>}
+
+      <div className="row g-3 mb-4">
+        <div className="col-sm-6 col-xl-3">
+          <StatCard label="Total Messages" value={stats?.total_messages ?? 0} icon="bi-chat-left-text-fill" accent="ink" />
+        </div>
+        <div className="col-sm-6 col-xl-3">
+          <StatCard label="Sent" value={stats?.sent_messages ?? 0} icon="bi-check-circle-fill" accent="signal" />
+        </div>
+        <div className="col-sm-6 col-xl-3">
+          <StatCard label="Pending" value={stats?.pending_messages ?? 0} icon="bi-hourglass-split" accent="amber" />
+        </div>
+        <div className="col-sm-6 col-xl-3">
+          <StatCard label="Failed" value={stats?.failed_messages ?? 0} icon="bi-x-circle-fill" accent="danger" />
+        </div>
+      </div>
+
+      <div className="sg-panel">
+        <div className="sg-panel-header">
+          <div>
+            <h2 className="sg-panel-title">Message Log</h2>
+            <div className="sg-panel-subtitle">Newest first.</div>
+          </div>
+
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <input
+              type="search"
+              className="form-control sg-input"
+              style={{ minWidth: 200 }}
+              placeholder="Search recipient, sender, message…"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
+
+            <select
+              className="form-select sg-input"
+              style={{ width: 140 }}
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option === "ALL" ? "All statuses" : option}
+                </option>
+              ))}
+            </select>
+
+            <div className="form-check form-switch mb-0 d-flex align-items-center gap-2">
+              <input
+                className="form-check-input sg-switch"
+                type="checkbox"
+                role="switch"
+                id={autoRefreshId}
+                checked={autoRefresh}
+                onChange={(event) => setAutoRefresh(event.target.checked)}
+              />
+              <label htmlFor={autoRefreshId} className="sg-cell-muted mb-0">
+                Auto-refresh
+              </label>
+            </div>
+
+            <button className="sg-icon-btn" onClick={() => loadLogs({ silent: false })} aria-label="Refresh now">
+              <i className="bi bi-arrow-clockwise"></i>
+            </button>
+          </div>
+        </div>
+
+        {selectedIds.size > 0 && (
+          <div className="d-flex align-items-center gap-2 flex-wrap px-3 py-2" style={{ borderBottom: "1px solid var(--sg-surface-200)" }}>
+            <span className="sg-cell-muted me-auto">
+              {selectedIds.size} message{selectedIds.size === 1 ? "" : "s"} selected
+            </span>
+            <button
+              type="button"
+              className="btn btn-outline-danger btn-sm"
+              disabled={retryableSelectedIds.length === 0 || isBulkRetrying || isDeleting}
+              onClick={handleBulkRetry}
+            >
+              <i className="bi bi-arrow-clockwise me-1"></i>
+              Retry failed ({retryableSelectedIds.length})
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              disabled={isBulkRetrying || isDeleting}
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              <i className="bi bi-trash-fill me-1"></i>
+              Delete selected
+            </button>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="d-flex justify-content-center py-5">
+            <div className="spinner-border text-success" role="status">
+              <span className="visually-hidden">Loading…</span>
+            </div>
+          </div>
+        ) : filteredLogs.length === 0 ? (
+          <div className="sg-table-empty">No messages match your filters.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="sg-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 40 }}>
+                    <input
+                      type="checkbox"
+                      aria-label="Select all completed message logs"
+                      checked={allVisibleSelected}
+                      ref={(input) => {
+                        if (input) input.indeterminate = someVisibleSelected && !allVisibleSelected;
+                      }}
+                      onChange={toggleAllVisible}
+                      disabled={selectableLogs.length === 0}
+                    />
+                  </th>
+                  <th>Recipient</th>
+                  <th>Sender</th>
+                  <th>Message</th>
+                  <th>Status</th>
+                  <th>Modem</th>
+                  <th>Queued</th>
+                  <th>Sent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLogs.map((log) => {
+                  const isDeletable = DELETABLE_STATUSES.has(log.status);
+
+                  return (
+                    <tr key={log.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(log.id)}
+                          disabled={!isDeletable}
+                          title={isDeletable ? "Select message" : "Pending messages cannot be deleted"}
+                          aria-label={`Select message for ${log.recipient_name || log.recipient}`}
+                          onChange={() => toggleSelected(log.id)}
+                        />
+                      </td>
+                      <td className="sg-cell-primary" title={log.recipient}>
+                        {log.recipient_name || log.recipient}
+                      </td>
+                      <td className="sg-cell-muted">{senderName(log)}</td>
+                      <td style={{ maxWidth: 280 }} title={log.message}>
+                        {log.message.length > 60 ? `${log.message.slice(0, 60)}…` : log.message}
+                        {log.status === "FAILED" && log.error_message && (
+                          <div className="text-danger" style={{ fontSize: "0.76rem" }}>
+                            {log.failure_category_label && <strong>{log.failure_category_label}: </strong>}
+                            {log.error_message}
+                          </div>
+                        )}
+                        {log.status === "FAILED" && (
+                          log.can_retry ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger mt-1 py-0 px-2"
+                              style={{ fontSize: "0.72rem" }}
+                              disabled={retryingIds.has(log.id)}
+                              onClick={() => handleRetry(log.id)}
+                            >
+                              {retryingIds.has(log.id) ? (
+                                <>
+                                  <span className="spinner-border spinner-border-sm me-1" style={{ width: 10, height: 10 }} />
+                                  Retrying…
+                                </>
+                              ) : (
+                                <>
+                                  <i className="bi bi-arrow-clockwise me-1"></i>
+                                  Retry
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <div className="sg-cell-muted" style={{ fontSize: "0.7rem" }}>
+                              No retry attempts left
+                            </div>
+                          )
+                        )}
+                      </td>
+                      <td><StatusBadge status={log.status} /></td>
+                      <td className="sg-cell-muted">{log.modem_port || "—"}</td>
+                      <td className="sg-cell-muted">{formatDateTime(log.created_at)}</td>
+                      <td className="sg-cell-muted">{formatDateTime(log.sent_at)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        show={showDeleteConfirm}
+        title="Delete selected message history?"
+        message={`${selectedIds.size} completed or failed message log${selectedIds.size === 1 ? "" : "s"} will be permanently deleted. This cannot be undone.`}
+        confirmLabel="Delete message history"
+        isDangerous
+        isSubmitting={isDeleting}
+        onConfirm={handleBulkDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
+    </div>
+  );
+}

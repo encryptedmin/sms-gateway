@@ -226,6 +226,12 @@ CELERY_TASK_ACKS_LATE = True
 # work spread evenly across the two modem threads.
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
+# Two worker threads allow both detected SIM800 modules to transmit in
+# parallel. gateway.tasks assigns consecutive log IDs round-robin across the
+# responsive modem ports, so a group send is split between the two modules.
+CELERY_WORKER_POOL = "threads"
+CELERY_WORKER_CONCURRENCY = 2
+
 # --- Broker visibility timeout ---------------------------------------
 #
 # Bug fix: previously this had no override, so with

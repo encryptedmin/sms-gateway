@@ -293,6 +293,31 @@ class GatewayApiTests(TestCase):
             ],
         )
 
+    @patch("gateway.tasks.Sim800Service")
+    def test_consecutive_messages_are_split_between_two_modems(
+        self,
+        service_class,
+    ):
+        from .tasks import _pick_modem_port
+
+        service_class.return_value.detected_ports.return_value = [
+            "COM6",
+            "COM7",
+        ]
+
+        self.assertEqual(
+            [
+                _pick_modem_port(log_id)
+                for log_id in [100, 101, 102, 103]
+            ],
+            [
+                "COM6",
+                "COM7",
+                "COM6",
+                "COM7",
+            ],
+        )
+
 
 class InstructorSmsIsolationTests(TestCase):
 
@@ -365,6 +390,56 @@ class InstructorSmsIsolationTests(TestCase):
         self.assertEqual(own_failed.status, "PENDING")
         delay.assert_called_once_with(own_failed.id)
 
+    @patch("gateway.views.process_sms.delay")
+    def test_instructor_can_bulk_retry_only_their_own_failed_messages(
+        self,
+        delay,
+    ):
+        own_failed = next(log for log in self.own_logs if log.status == "FAILED")
+
+        response = self.client.post(
+            "/api/logs/bulk-retry/",
+            {
+                "ids": [
+                    own_failed.id,
+                    self.other_log.id,
+                ]
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.data["retried"], 1)
+        self.assertEqual(response.data["skipped"], 1)
+        own_failed.refresh_from_db()
+        self.other_log.refresh_from_db()
+        self.assertEqual(own_failed.status, "PENDING")
+        self.assertEqual(self.other_log.status, "FAILED")
+        delay.assert_called_once_with(own_failed.id)
+
+    def test_instructor_can_bulk_delete_only_their_completed_history(self):
+        own_sent = next(log for log in self.own_logs if log.status == "SENT")
+        own_pending = next(log for log in self.own_logs if log.status == "PENDING")
+
+        response = self.client.post(
+            "/api/logs/bulk-delete/",
+            {
+                "ids": [
+                    own_sent.id,
+                    own_pending.id,
+                    self.other_log.id,
+                ]
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["deleted"], 1)
+        self.assertEqual(response.data["skipped"], 2)
+        self.assertFalse(SmsLog.objects.filter(id=own_sent.id).exists())
+        self.assertTrue(SmsLog.objects.filter(id=own_pending.id).exists())
+        self.assertTrue(SmsLog.objects.filter(id=self.other_log.id).exists())
+
     def test_instructor_can_view_the_modem_signal_indicator(self):
         response = self.client.get("/api/modem-status/")
 
@@ -416,6 +491,34 @@ class InstructorSmsIsolationTests(TestCase):
                 first_contact.mobile_number,
                 second_contact.mobile_number,
             },
+        )
+        self.assertSetEqual(
+            set(
+                SmsLog.objects.filter(
+                    message="Class is suspended."
+                ).values_list("recipient_name", flat=True)
+            ),
+            {
+                "First",
+                "Second",
+            },
+        )
+
+        logs_response = self.client.get("/api/logs/")
+        sent_rows = [
+            row
+            for row in logs_response.data
+            if row["message"] == "Class is suspended."
+        ]
+        self.assertSetEqual(
+            {row["recipient_name"] for row in sent_rows},
+            {
+                "First",
+                "Second",
+            },
+        )
+        self.assertTrue(
+            all(row["sent_by_name"] == "Instructor One" for row in sent_rows)
         )
         self.assertEqual(delay.call_count, 2)
 

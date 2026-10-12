@@ -211,6 +211,11 @@ class SmsLog(models.Model):
         max_length=20
     )
 
+    recipient_name = models.CharField(
+        max_length=201,
+        blank=True
+    )
+
     message = models.TextField()
 
     status = models.CharField(

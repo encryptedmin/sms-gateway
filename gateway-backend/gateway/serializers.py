@@ -41,14 +41,19 @@ class SmsLogSerializer(serializers.ModelSerializer):
         if not obj.subscriber_id:
             return ""
 
-        return obj.subscriber.user.username
+        user = obj.subscriber.user
+        full_name = f"{user.first_name} {user.last_name}".strip()
+
+        return full_name or user.username
 
     def get_sent_by_name(self, obj):
 
         if not obj.sent_by_id:
             return ""
 
-        return f"{obj.sent_by.first_name} {obj.sent_by.last_name}".strip()
+        full_name = f"{obj.sent_by.first_name} {obj.sent_by.last_name}".strip()
+
+        return full_name or obj.sent_by.username
 
     failure_category_label = serializers.SerializerMethodField()
 
@@ -102,6 +107,7 @@ class SmsLogSerializer(serializers.ModelSerializer):
             "sent_by",
             "sent_by_name",
             "recipient",
+            "recipient_name",
             "message",
             "status",
             "created_at",
