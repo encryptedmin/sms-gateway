@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from datetime import date
 from unittest.mock import patch
 
@@ -7,6 +8,7 @@ from rest_framework.test import APIClient
 
 from contacts.models import Contact
 from contacts.models import ContactGroup
+from contacts.serializers import ContactGroupSerializer
 from plans.models import Plan
 from subscribers.models import Subscriber
 from users.models import User
@@ -14,6 +16,7 @@ from users.models import User
 from .models import ApiKey
 from .models import SmsLog
 from .models import Subscription
+from .models import ModemStatus
 
 
 class GatewayApiTests(TestCase):
@@ -155,6 +158,26 @@ class GatewayApiTests(TestCase):
             ).exists()
         )
 
+    def test_group_reports_only_active_contacts_for_send_estimate(self):
+        group = ContactGroup.objects.create(name="BSIT 1A")
+        active_contact = Contact.objects.create(
+            first_name="Active",
+            mobile_number="09171111111",
+            active=True,
+        )
+        inactive_contact = Contact.objects.create(
+            first_name="Inactive",
+            mobile_number="09172222222",
+            active=False,
+        )
+        active_contact.groups.add(group)
+        inactive_contact.groups.add(group)
+
+        data = ContactGroupSerializer(group).data
+
+        self.assertEqual(data["contact_count"], 2)
+        self.assertEqual(data["active_contact_count"], 1)
+
     @patch("gateway.views.process_sms.delay")
     def test_send_sms_rejects_malformed_recipient(self, delay):
         """
@@ -184,6 +207,35 @@ class GatewayApiTests(TestCase):
             0
         )
         delay.assert_not_called()
+
+    @patch("gateway.services.time.sleep")
+    @patch("gateway.services.serial.Serial")
+    def test_signal_probe_sends_only_at_csq(self, serial_class, sleep):
+        from .services import Sim800Service
+
+        serial_connection = serial_class.return_value
+        serial_connection.is_open = True
+        service = Sim800Service()
+
+        with patch.object(
+            service,
+            "_modem_lock",
+            return_value=nullcontext(),
+        ), patch.object(
+            service,
+            "_send_command",
+            return_value="+CSQ: 18,0\r\nOK",
+        ) as send_command:
+            result = service.check_signal("COM3")
+
+        send_command.assert_called_once_with(
+            serial_connection,
+            "AT+CSQ",
+            timeout=5,
+        )
+        self.assertTrue(result["responsive"])
+        self.assertEqual(result["signal_csq"], 18)
+        serial_connection.close.assert_called_once_with()
 
 
 class InstructorSmsIsolationTests(TestCase):
@@ -262,3 +314,33 @@ class InstructorSmsIsolationTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("modems", response.data)
+
+    @patch("gateway.views._redis_client")
+    @patch("gateway.views.Sim800Service")
+    def test_automatic_signal_refresh_uses_signal_only_probe(
+        self,
+        service_class,
+        redis_client,
+    ):
+        redis_client.return_value.ttl.return_value = 0
+        redis_client.return_value.set.return_value = True
+        service = service_class.return_value
+        service.signal_check_ports.return_value = ["COM3"]
+        service.check_signal.return_value = {
+            "responsive": True,
+            "signal_csq": 21,
+            "raw": "+CSQ: 21,0\r\nOK",
+            "error": "",
+        }
+
+        response = self.client.post("/api/modem-status/check/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["refresh_interval_seconds"], 30)
+        self.assertEqual(response.data["modems"][0]["signal_csq"], 21)
+        service.signal_check_ports.assert_called_once_with()
+        service.check_signal.assert_called_once_with("COM3")
+        service.discover_all_modem_ports.assert_not_called()
+        modem = ModemStatus.objects.get(port="COM3")
+        self.assertTrue(modem.is_online)
+        self.assertEqual(modem.signal_bucket, "EXCELLENT")

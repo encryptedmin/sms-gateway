@@ -1,4 +1,6 @@
 from django.test import TestCase
+from django.test import override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import User
@@ -129,3 +131,167 @@ class SingleSessionAuthenticationTests(TestCase):
             browser.get("/api/device-session/").data,
             {"active": True, "user_id": self.user.pk},
         )
+
+    @override_settings(BROWSER_SESSION_CLOSE_GRACE_SECONDS=2)
+    def test_last_tab_close_expires_the_device_session_after_grace(self):
+        browser = APIClient()
+        self.login(browser)
+
+        close_response = browser.post("/api/device-session/closing/")
+        self.assertEqual(close_response.status_code, 204)
+        self.assertTrue(browser.get("/api/device-session/").data["active"])
+
+        session = browser.session
+        session["browser_closing_at"] = timezone.now().timestamp() - 3
+        session.save()
+
+        self.assertEqual(browser.get("/api/me/").status_code, 401)
+        self.assertEqual(
+            browser.get("/api/device-session/").data,
+            {"active": False, "user_id": None},
+        )
+
+        next_login = browser.post(
+            "/api/token/",
+            {
+                "username": self.other_user.username,
+                "password": "pass12345",
+            },
+            format="json",
+        )
+        self.assertEqual(next_login.status_code, 200)
+
+    def test_page_reload_can_resume_recently_closing_session(self):
+        browser = APIClient()
+        self.login(browser)
+
+        browser.post("/api/device-session/closing/")
+        resume_response = browser.post("/api/device-session/resume/")
+
+        self.assertEqual(resume_response.status_code, 204)
+        self.assertNotIn("browser_closing_at", browser.session)
+        self.assertTrue(browser.get("/api/device-session/").data["active"])
+
+    def test_super_admin_can_reset_department_admin_password(self):
+        super_admin = User.objects.create_user(
+            username="super-admin",
+            email="super@example.com",
+            password="pass12345",
+            role="SUPER_ADMIN",
+        )
+        department_admin = User.objects.create_user(
+            username="department-admin",
+            email="department@example.com",
+            password="pass12345",
+            role="DEPARTMENT_ADMIN",
+            is_ite_admin=True,
+        )
+        department_browser = APIClient()
+        self.login(department_browser, department_admin)
+        super_client = APIClient()
+        super_client.force_authenticate(user=super_admin)
+
+        response = super_client.post(
+            f"/api/admin-accounts/{department_admin.pk}/reset-password/",
+            {
+                "new_password": "NewStrongPass!234",
+                "confirm_password": "NewStrongPass!234",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        department_admin.refresh_from_db()
+        self.assertTrue(department_admin.check_password("NewStrongPass!234"))
+        self.assertEqual(department_browser.get("/api/me/").status_code, 401)
+
+    def test_department_admin_can_reset_instructor_password(self):
+        department_admin = User.objects.create_user(
+            username="department-admin",
+            email="department@example.com",
+            password="pass12345",
+            role="DEPARTMENT_ADMIN",
+            is_ite_admin=True,
+        )
+        admin_client = APIClient()
+        admin_client.force_authenticate(user=department_admin)
+
+        response = admin_client.post(
+            f"/api/instructors/{self.user.pk}/reset-password/",
+            {
+                "new_password": "FreshSecure!726",
+                "confirm_password": "FreshSecure!726",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("FreshSecure!726"))
+
+        instructor_client = APIClient()
+        instructor_client.force_authenticate(user=self.user)
+        forbidden = instructor_client.post(
+            f"/api/instructors/{self.other_user.pk}/reset-password/",
+            {
+                "new_password": "NotAllowed!234",
+                "confirm_password": "NotAllowed!234",
+            },
+            format="json",
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_instructor_can_change_own_password_and_is_signed_out(self):
+        browser = APIClient()
+        self.login(browser)
+
+        wrong_current = browser.post(
+            "/api/change-password/",
+            {
+                "current_password": "incorrect",
+                "new_password": "OwnNewPassword!234",
+                "confirm_password": "OwnNewPassword!234",
+            },
+            format="json",
+        )
+        self.assertEqual(wrong_current.status_code, 400)
+
+        response = browser.post(
+            "/api/change-password/",
+            {
+                "current_password": "pass12345",
+                "new_password": "OwnNewPassword!234",
+                "confirm_password": "OwnNewPassword!234",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("OwnNewPassword!234"))
+        self.assertEqual(browser.get("/api/me/").status_code, 401)
+
+    def test_department_admin_can_change_own_password(self):
+        department_admin = User.objects.create_user(
+            username="department-admin",
+            email="department@example.com",
+            password="pass12345",
+            role="DEPARTMENT_ADMIN",
+            is_ite_admin=True,
+        )
+        browser = APIClient()
+        self.login(browser, department_admin)
+
+        response = browser.post(
+            "/api/change-password/",
+            {
+                "current_password": "pass12345",
+                "new_password": "VioletHarbor!726",
+                "confirm_password": "VioletHarbor!726",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        department_admin.refresh_from_db()
+        self.assertTrue(department_admin.check_password("VioletHarbor!726"))

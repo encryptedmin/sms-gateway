@@ -45,9 +45,37 @@ export async function getCurrentUser() {
   return response.data;
 }
 
+export async function changeOwnPassword(payload) {
+  const response = await axiosClient.post("/change-password/", payload);
+  return response.data;
+}
+
 export async function getDeviceSession() {
   const response = await axiosClient.get("/device-session/");
   return response.data;
+}
+
+export async function resumeDeviceSession() {
+  await axiosClient.post("/device-session/resume/");
+}
+
+export function markBrowserClosing() {
+  const baseURL = String(axiosClient.defaults.baseURL || "/api").replace(/\/$/, "");
+  const endpoint = `${baseURL}/device-session/closing/`;
+
+  if (navigator.sendBeacon) {
+    return navigator.sendBeacon(
+      endpoint,
+      new Blob([], { type: "application/json" })
+    );
+  }
+
+  void fetch(endpoint, {
+    method: "POST",
+    credentials: "include",
+    keepalive: true,
+  });
+  return true;
 }
 
 export function discardLocalSession() {
@@ -58,12 +86,10 @@ export async function logout() {
   const refresh = getRefreshToken();
   clearTokens();
 
-  if (!refresh) return;
-
   try {
     await axios.post(
       `${axiosClient.defaults.baseURL}/logout/`,
-      { refresh },
+      refresh ? { refresh } : {},
       { withCredentials: true }
     );
   } catch {

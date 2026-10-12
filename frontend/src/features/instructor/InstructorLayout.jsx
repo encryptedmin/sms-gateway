@@ -2,6 +2,10 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { initials } from "../../utils/formatters";
+import { extractApiError } from "../../utils/apiErrors";
+import { changeOwnPassword } from "../../api/authService";
+import PasswordModal from "../../components/PasswordModal";
+import { useToast } from "../../context/ToastContext";
 import "../../styles/adminLayout.css";
 
 const NAV_ITEMS = [
@@ -24,10 +28,27 @@ const PAGE_TITLES = {
 
 export default function InstructorLayout() {
   const { user, logout } = useAuth();
+  const { showToast } = useToast();
   const location = useLocation();
   const [isNavOpen, setIsNavOpen] = useState(false);
+  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   const pageTitle = PAGE_TITLES[location.pathname] || "Instructor";
+
+  async function handleChangePassword(payload) {
+    setIsChangingPassword(true);
+    try {
+      await changeOwnPassword(payload);
+      setIsPasswordOpen(false);
+      showToast("Password changed. Sign in again with your new password.");
+      logout();
+    } catch (error) {
+      showToast(extractApiError(error, "Couldn't change your password."), "error");
+    } finally {
+      setIsChangingPassword(false);
+    }
+  }
 
   return (
     <div className="sg-admin-shell">
@@ -68,6 +89,13 @@ export default function InstructorLayout() {
               <div className="sg-sidebar-user-role">ITE Instructor</div>
             </div>
           </div>
+          <button
+            className="btn btn-sm btn-outline-light w-100 mb-2"
+            onClick={() => setIsPasswordOpen(true)}
+          >
+            <i className="bi bi-key-fill me-1"></i>
+            Change password
+          </button>
           <button className="btn btn-sm btn-outline-light w-100" onClick={logout}>
             <i className="bi bi-box-arrow-right me-1"></i>
             Sign out
@@ -89,6 +117,16 @@ export default function InstructorLayout() {
           <Outlet />
         </div>
       </div>
+
+      <PasswordModal
+        show={isPasswordOpen}
+        title="Change your password"
+        description="Confirm your current password, then choose a new one. You will be signed out afterward."
+        requireCurrentPassword
+        isSubmitting={isChangingPassword}
+        onSubmit={handleChangePassword}
+        onCancel={() => setIsPasswordOpen(false)}
+      />
     </div>
   );
 }

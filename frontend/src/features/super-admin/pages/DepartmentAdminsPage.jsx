@@ -3,12 +3,15 @@ import {
   createDepartmentAdmin,
   deleteDepartmentAdmin,
   listDepartmentAdmins,
+  resetDepartmentAdminPassword,
   updateDepartmentAdmin,
 } from "../../../api/departmentAdminService";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import { useToast } from "../../../context/ToastContext";
 import DepartmentAdminEditModal from "../components/DepartmentAdminEditModal";
 import DepartmentAdminForm from "../components/DepartmentAdminForm";
+import PasswordModal from "../../../components/PasswordModal";
+import { extractApiError } from "../../../utils/apiErrors";
 
 function extractErrorMessage(error) {
   const data = error?.response?.data;
@@ -28,6 +31,7 @@ export default function DepartmentAdminsPage() {
   const [departmentAdmins, setDepartmentAdmins] = useState([]);
   const [editingAdmin, setEditingAdmin] = useState(null);
   const [adminPendingDelete, setAdminPendingDelete] = useState(null);
+  const [adminPendingPasswordReset, setAdminPendingPasswordReset] = useState(null);
 
   const loadDepartmentAdmins = useCallback(async () => {
     setIsLoading(true);
@@ -87,6 +91,24 @@ export default function DepartmentAdminsPage() {
       setAdminPendingDelete(null);
     } catch {
       showToast("Couldn't remove this department admin.", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handlePasswordReset(payload) {
+    if (!adminPendingPasswordReset) return;
+
+    setIsSubmitting(true);
+    try {
+      await resetDepartmentAdminPassword(
+        adminPendingPasswordReset.id,
+        payload
+      );
+      showToast(`Password reset for "${adminPendingPasswordReset.username}". Their active sessions were signed out.`);
+      setAdminPendingPasswordReset(null);
+    } catch (error) {
+      showToast(extractApiError(error, "Couldn't reset this password."), "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -177,6 +199,17 @@ export default function DepartmentAdminsPage() {
                               <i className="bi bi-pencil-fill"></i>
                             </button>
                             <button
+                              className="sg-icon-btn"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setAdminPendingPasswordReset(admin);
+                              }}
+                              aria-label="Reset department admin password"
+                              title="Reset password"
+                            >
+                              <i className="bi bi-key-fill"></i>
+                            </button>
+                            <button
                               className="sg-icon-btn sg-icon-btn-danger"
                               onClick={(event) => {
                                 event.stopPropagation();
@@ -220,6 +253,15 @@ export default function DepartmentAdminsPage() {
         isSubmitting={isSubmitting}
         onConfirm={handleDelete}
         onCancel={() => setAdminPendingDelete(null)}
+      />
+
+      <PasswordModal
+        show={Boolean(adminPendingPasswordReset)}
+        title="Reset department admin password"
+        description={`Set a new password for ${adminPendingPasswordReset?.username || "this account"}. All of their active sessions will be signed out.`}
+        isSubmitting={isSubmitting}
+        onSubmit={handlePasswordReset}
+        onCancel={() => setAdminPendingPasswordReset(null)}
       />
     </>
   );

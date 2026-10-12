@@ -5,6 +5,7 @@ import { listMessageTemplates } from "../../../api/messageTemplatesService";
 import { sendDepartmentSms } from "../../../api/departmentSmsService";
 import { useToast } from "../../../context/ToastContext";
 import SendSmsForm from "../../department-admin/components/SendSmsForm";
+import ModemStatusPanel from "../../../components/ModemStatusPanel";
 
 function extractErrorMessage(error) {
   const data = error?.response?.data;
@@ -89,7 +90,8 @@ export default function SendSmsPage() {
         </div>
       </div>
 
-      <div className="col-lg-5">
+      <div className="col-lg-5 d-flex flex-column gap-3">
+        <ModemStatusPanel compact />
         <div className="sg-panel p-4" style={{ fontSize: "0.88rem", color: "var(--sg-text-500)" }}>
           <i className="bi bi-info-circle me-2" style={{ color: "var(--sg-signal-600)" }}></i>
           You can message any contact group you own, plus any group you've

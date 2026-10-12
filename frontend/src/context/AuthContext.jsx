@@ -2,12 +2,15 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import * as authService from "../api/authService";
 import { SESSION_ENDED_EVENT } from "../api/axiosClient";
 import { SESSION_SYNC_KEY } from "../api/tokenStorage";
+import { startBrowserSessionLifecycle } from "../api/browserSessionLifecycle";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+
+  useEffect(() => startBrowserSessionLifecycle(), []);
 
   useEffect(() => {
     let isMounted = true;
@@ -22,8 +25,11 @@ export function AuthProvider({ children }) {
         }
 
         if (!authService.hasStoredSession()) {
+          await authService.logout();
           return;
         }
+
+        await authService.resumeDeviceSession();
 
         const currentUser = await authService.getCurrentUser();
         if (isMounted) {

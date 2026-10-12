@@ -11,6 +11,8 @@ from rest_framework_simplejwt.serializers import (
 )
 from rest_framework_simplejwt.settings import api_settings
 
+from .session_state import expire_closed_browser_session
+
 
 SESSION_ERROR = "This login does not belong to the active browser session."
 
@@ -20,6 +22,8 @@ class SingleSessionTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     def validate(self, attrs):
         request = self.context["request"]
+
+        expire_closed_browser_session(request)
 
         if request.session.get("login_session_id"):
             raise serializers.ValidationError(
@@ -60,6 +64,7 @@ class SingleSessionTokenRefreshSerializer(TokenRefreshSerializer):
         session_id = refresh.get("session_id")
 
         request = self.context["request"]
+        expire_closed_browser_session(request)
         browser_session_id = request.session.get("login_session_id")
         browser_user_id = request.session.get("login_user_id")
         user = get_user_model().objects.filter(

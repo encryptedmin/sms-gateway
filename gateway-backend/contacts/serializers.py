@@ -15,6 +15,8 @@ class ContactGroupSerializer(serializers.ModelSerializer):
 
     contact_count = serializers.SerializerMethodField()
 
+    active_contact_count = serializers.SerializerMethodField()
+
     adopted_groups = serializers.PrimaryKeyRelatedField(
         many=True,
         required=False,
@@ -34,6 +36,7 @@ class ContactGroupSerializer(serializers.ModelSerializer):
             "is_class",
             "adopted_groups",
             "contact_count",
+            "active_contact_count",
             "created_at",
         ]
         read_only_fields = [
@@ -41,6 +44,7 @@ class ContactGroupSerializer(serializers.ModelSerializer):
             "owner_name",
             "can_manage",
             "contact_count",
+            "active_contact_count",
             "created_at",
         ]
 
@@ -74,6 +78,12 @@ class ContactGroupSerializer(serializers.ModelSerializer):
     def get_contact_count(self, obj):
 
         return obj.get_all_contacts().count()
+
+    def get_active_contact_count(self, obj):
+
+        return obj.get_all_contacts().filter(
+            active=True
+        ).count()
 
     def validate_name(self, value):
 

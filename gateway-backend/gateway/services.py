@@ -59,11 +59,8 @@ class Sim800Service:
 
     def _get_preferred_ports(self):
         """
-        Ports we currently believe host a SIM800 modem — sourced from
-        the last admin-triggered discovery (ModemStatus table), NOT a
-        hardcoded port list, since the modem can be plugged into any
-        USB port on any machine this gets deployed to and we can't
-        assume COM3/COM4 or any specific number.
+        Ports we currently believe host a SIM800 modem, sourced from the
+        ModemStatus cache populated by automatic signal monitoring.
 
         Falls back to "every serial port currently connected" if
         discovery has never been run yet, so sending still works
@@ -829,6 +826,91 @@ class Sim800Service:
 
                 ser.close()
 
+    def signal_check_ports(self):
+        """
+        Return configured and previously-known modem ports without probing
+        arbitrary serial devices. The automatic refresh can therefore issue
+        exactly one harmless modem command: AT+CSQ.
+        """
+
+        from .models import ModemStatus
+
+        known_ports = list(
+            ModemStatus.objects.values_list(
+                "port",
+                flat=True
+            )
+        )
+
+        return list(
+            dict.fromkeys(
+                known_ports + self._configured_ports_from_settings()
+            )
+        )
+
+    def check_signal(self, port):
+        """
+        Read the SIM800's cached radio signal value with AT+CSQ only.
+
+        No registration, SMS-mode, SIM storage, or identity command is sent.
+        The normal cross-process port lock ensures this query cannot interrupt
+        an SMS transmission.
+        """
+
+        if settings.SMS_DEV_MODE:
+
+            return {
+                "responsive": True,
+                "signal_csq": 22,
+                "raw": "+CSQ: 22,0\r\nOK",
+                "error": "",
+            }
+
+        ser = None
+
+        try:
+
+            with self._modem_lock(
+                port,
+                timeout=self.PORT_LOCK_ACQUIRE_TIMEOUT
+            ):
+
+                ser = serial.Serial(
+                    port=port,
+                    baudrate=self.baudrate,
+                    timeout=1
+                )
+
+                time.sleep(0.2)
+
+                response = self._send_command(
+                    ser,
+                    "AT+CSQ",
+                    timeout=5
+                )
+
+                return {
+                    "responsive": "+CSQ:" in response and "OK" in response,
+                    "signal_csq": self._parse_csq(response),
+                    "raw": response,
+                    "error": "",
+                }
+
+        except (TimeoutError, OSError) as ex:
+
+            return {
+                "responsive": False,
+                "signal_csq": None,
+                "raw": str(ex),
+                "error": str(ex),
+            }
+
+        finally:
+
+            if ser and ser.is_open:
+
+                ser.close()
+
     def _parse_csq(self, response):
 
         match = re.search(
@@ -929,13 +1011,12 @@ class Sim800Service:
 
     def discover_all_modem_ports(self):
         """
-        Scans every serial port currently connected to this machine —
-        not a preconfigured list — and returns the ones that
+        Legacy explicit discovery helper. Scans every serial port currently
+        connected to this machine — not a preconfigured list — and returns the ones that
         positively identify as a SIM800/SIMCOM modem, regardless of
         which physical USB port or COM number it enumerated as. This
-        is what powers the admin's "Check now" action; it's
-        deliberately not run on every send (too slow against unrelated
-        serial devices) — see gateway/views.py modem_status_check.
+        It is intentionally not used by automatic signal monitoring, which
+        sends only AT+CSQ to configured or already-known modem ports.
         """
 
         if settings.SMS_DEV_MODE:

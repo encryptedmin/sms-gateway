@@ -337,11 +337,8 @@ class SmsRetryPolicy(models.Model):
 
 class ModemStatus(models.Model):
     """
-    Last-known status for one configured modem port. Only ever written
-    by a deliberate admin-triggered check (see gateway/views.py
-    modem_status_check) — never polled automatically — so this table
-    is what GET /api/modem-status/ reads to show something on page
-    load without touching the hardware.
+    Last-known status for one configured modem port. The automatic AT+CSQ
+    refresh writes this cache; GET /api/modem-status/ only reads it.
     """
 
     SIGNAL_BUCKET = [
@@ -360,13 +357,9 @@ class ModemStatus(models.Model):
         default=False
     )
 
-    # is_online collapses AT+CREG? down to a yes/no, which hides *why* a
-    # modem is offline. A modem can have perfectly good signal_csq and
-    # still be offline here — CSQ is a raw RF measurement independent of
-    # whether the SIM has actually completed network registration. These
-    # two fields carry that "why" through to the admin UI instead of
-    # just showing a flat "Offline" next to a signal bar and leaving
-    # someone to wonder if that's a bug.
+    # Kept as is_online for API/database compatibility. Under automatic
+    # AT+CSQ monitoring it means that the modem responded to the query; it
+    # does not claim that the SIM is registered with the mobile network.
     REGISTRATION_STATE = [
         ("REGISTERED_HOME", "REGISTERED_HOME"),
         ("REGISTERED_ROAMING", "REGISTERED_ROAMING"),

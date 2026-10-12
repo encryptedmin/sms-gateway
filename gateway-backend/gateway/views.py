@@ -704,7 +704,8 @@ def retry_policy(request):
     )
 
 
-MODEM_STATUS_COOLDOWN_SECONDS = 30
+MODEM_STATUS_COOLDOWN_SECONDS = 25
+MODEM_STATUS_REFRESH_SECONDS = 30
 MODEM_STATUS_COOLDOWN_KEY = "modem_status:cooldown"
 
 
@@ -741,6 +742,7 @@ def modem_status(request):
     return Response(
         {
             "cooldown_seconds": MODEM_STATUS_COOLDOWN_SECONDS,
+            "refresh_interval_seconds": MODEM_STATUS_REFRESH_SECONDS,
             "modems": _serialize_modem_statuses(),
         }
     )
@@ -750,14 +752,10 @@ def modem_status(request):
 @permission_classes([CanSendSms])
 def modem_status_check(request):
     """
-    The deliberate "check now" action — scans every serial port on the
-    machine, confirms which ones are actually a SIM800 modem (not just
-    "some serial device exists here"), and records online/offline +
-    signal for each. Works regardless of which USB port or COM number
-    a modem enumerates as. Global cooldown (not per-user): the SIM
-    doesn't care which admin is asking, so one admin checking shouldn't
-    let another immediately check again and double up on hardware
-    traffic.
+    Automatic, read-only signal refresh. It issues AT+CSQ only against
+    configured/previously-known modem ports and stores the result for every
+    dashboard. The cooldown prevents several open tabs from querying the
+    same modem at once; the port lock prevents collision with an SMS send.
     """
 
     client = _redis_client()
@@ -771,6 +769,7 @@ def modem_status_check(request):
                 "error": "Status check is on cooldown.",
                 "retry_after_seconds": ttl,
                 "cooldown_seconds": MODEM_STATUS_COOLDOWN_SECONDS,
+                "refresh_interval_seconds": MODEM_STATUS_REFRESH_SECONDS,
                 "modems": _serialize_modem_statuses(),
             },
             status=429
@@ -795,36 +794,43 @@ def modem_status_check(request):
                 "error": "Status check is on cooldown.",
                 "retry_after_seconds": ttl,
                 "cooldown_seconds": MODEM_STATUS_COOLDOWN_SECONDS,
+                "refresh_interval_seconds": MODEM_STATUS_REFRESH_SECONDS,
                 "modems": _serialize_modem_statuses(),
             },
             status=429
         )
 
     probe = Sim800Service()
-    discovered_ports = probe.discover_all_modem_ports()
+    signal_ports = probe.signal_check_ports()
 
-    # Drop stale rows for ports that no longer have a SIM800 on them —
-    # e.g. a modem that was moved to a different USB port since the
-    # last check. Without this, an old port would keep showing up
-    # (and keep getting round-robin'd to) even though nothing's there
-    # anymore.
-    ModemStatus.objects.exclude(
-        port__in=discovered_ports
-    ).delete()
+    # Do not scan or identify unrelated serial devices here. Automatic
+    # refreshes are intentionally limited to a single AT+CSQ per known port.
+    for port in signal_ports:
 
-    for port in discovered_ports:
-
-        result = probe.check_status(port)
+        result = probe.check_signal(port)
         signal_csq = result["signal_csq"]
+        responsive = result["responsive"]
+
+        registration_detail = (
+            "Modem responded to the automatic AT+CSQ signal query. "
+            "Network registration is not queried by this refresh."
+            if responsive
+            else "No response to the automatic AT+CSQ signal query."
+        )
+
+        if result["error"]:
+            registration_detail += f" {result['error']}"
 
         ModemStatus.objects.update_or_create(
             port=port,
             defaults={
-                "is_online": result["online"],
+                "is_online": responsive,
                 "signal_csq": signal_csq,
                 "signal_bucket": ModemStatus.bucket_for_csq(signal_csq),
-                "registration_state": result["registration_state"],
-                "registration_detail": result["registration_detail"],
+                "registration_state": (
+                    "UNKNOWN" if responsive else "NO_RESPONSE"
+                ),
+                "registration_detail": registration_detail,
                 "last_checked_by": request.user,
             }
         )
@@ -832,6 +838,7 @@ def modem_status_check(request):
     return Response(
         {
             "cooldown_seconds": MODEM_STATUS_COOLDOWN_SECONDS,
+            "refresh_interval_seconds": MODEM_STATUS_REFRESH_SECONDS,
             "modems": _serialize_modem_statuses(),
         }
     )

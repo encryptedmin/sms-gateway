@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from .models import User
 
@@ -152,3 +154,53 @@ class DepartmentAdminAccountSerializer(serializers.ModelSerializer):
             "role",
             "is_ite_admin",
         ]
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+
+    new_password = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+    )
+    confirm_password = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+    )
+
+    def validate(self, attrs):
+
+        if attrs["new_password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError(
+                {"confirm_password": "The passwords do not match."}
+            )
+
+        try:
+            validate_password(
+                attrs["new_password"],
+                user=self.context.get("user"),
+            )
+        except DjangoValidationError as ex:
+            raise serializers.ValidationError(
+                {"new_password": list(ex.messages)}
+            ) from ex
+
+        return attrs
+
+
+class ChangePasswordSerializer(ResetPasswordSerializer):
+
+    current_password = serializers.CharField(
+        write_only=True,
+        trim_whitespace=False,
+    )
+
+    def validate(self, attrs):
+
+        user = self.context["user"]
+
+        if not user.check_password(attrs["current_password"]):
+            raise serializers.ValidationError(
+                {"current_password": "The current password is incorrect."}
+            )
+
+        return super().validate(attrs)

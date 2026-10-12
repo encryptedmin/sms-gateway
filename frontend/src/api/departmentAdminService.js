@@ -18,3 +18,11 @@ export async function updateDepartmentAdmin(id, payload) {
 export async function deleteDepartmentAdmin(id) {
   await axiosClient.delete(`/admin-accounts/${id}/`);
 }
+
+export async function resetDepartmentAdminPassword(id, payload) {
+  const response = await axiosClient.post(
+    `/admin-accounts/${id}/reset-password/`,
+    payload
+  );
+  return response.data;
+}

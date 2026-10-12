@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from "react";
+import SendEstimateModal from "../../../components/SendEstimateModal";
 
 const TARGET_TYPES = [
   { value: "contact", label: "Single contact", icon: "bi-person-fill" },
@@ -12,6 +13,7 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
   const [groupId, setGroupId] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [message, setMessage] = useState("");
+  const [pendingSend, setPendingSend] = useState(null);
 
   const messageId = useId();
   const contactSearchId = useId();
@@ -33,6 +35,11 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
   const selectedGroup = useMemo(
     () => groups.find((group) => String(group.id) === String(groupId)),
     [groups, groupId]
+  );
+
+  const selectedContact = useMemo(
+    () => contacts.find((contact) => String(contact.id) === String(contactId)),
+    [contacts, contactId]
   );
 
   function handleTemplateChange(event) {
@@ -61,8 +68,26 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
     event.preventDefault();
     if (!isValid()) return;
 
-    const wasSent = await onSend(buildPayload());
+    const recipientCount = targetType === "contact"
+      ? 1
+      : Number(selectedGroup?.active_contact_count ?? selectedGroup?.contact_count ?? 0);
+    const targetLabel = targetType === "contact"
+      ? `${selectedContact?.first_name || ""} ${selectedContact?.last_name || ""}`.trim()
+      : selectedGroup?.name || "Selected group";
+
+    setPendingSend({
+      payload: buildPayload(),
+      recipientCount,
+      targetLabel,
+    });
+  }
+
+  async function confirmSend() {
+    if (!pendingSend) return;
+
+    const wasSent = await onSend(pendingSend.payload);
     if (wasSent) {
+      setPendingSend(null);
       setMessage("");
       setTemplateId("");
       setContactId("");
@@ -72,6 +97,7 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit}>
       <div className="mb-3">
         <label className="form-label sg-label">Send to</label>
@@ -216,5 +242,15 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
         )}
       </button>
     </form>
+
+    <SendEstimateModal
+      show={Boolean(pendingSend)}
+      recipientCount={pendingSend?.recipientCount || 0}
+      targetLabel={pendingSend?.targetLabel || ""}
+      isSubmitting={isSubmitting}
+      onConfirm={confirmSend}
+      onCancel={() => setPendingSend(null)}
+    />
+    </>
   );
 }

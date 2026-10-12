@@ -18,3 +18,11 @@ export async function updateInstructor(id, payload) {
 export async function deleteInstructor(id) {
   await axiosClient.delete(`/instructors/${id}/`);
 }
+
+export async function resetInstructorPassword(id, payload) {
+  const response = await axiosClient.post(
+    `/instructors/${id}/reset-password/`,
+    payload
+  );
+  return response.data;
+}

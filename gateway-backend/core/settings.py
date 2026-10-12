@@ -184,6 +184,13 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_HTTPONLY = True
 
+# A reload also fires pagehide. The frontend marks a possible last-tab close,
+# then a promptly loaded page cancels it. If nothing returns within this short
+# grace period, the next request flushes the abandoned browser session.
+BROWSER_SESSION_CLOSE_GRACE_SECONDS = int(
+    os.getenv("BROWSER_SESSION_CLOSE_GRACE_SECONDS", "2")
+)
+
 AUTH_USER_MODEL = "users.User"
 
 REDIS_URL = os.getenv(

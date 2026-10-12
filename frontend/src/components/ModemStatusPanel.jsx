@@ -3,6 +3,9 @@ import { getModemStatus, checkModemStatus } from "../api/modemStatusService";
 import { useToast } from "../context/ToastContext";
 import { formatDateTime } from "../utils/formatters";
 
+
+const DEFAULT_REFRESH_SECONDS = 30;
+
 const SIGNAL_META = {
   EXCELLENT: { label: "Excellent", bars: 3, color: "var(--sg-signal-600)" },
   GOOD: { label: "Good", bars: 2, color: "var(--sg-signal-600)" },
@@ -12,8 +15,14 @@ const SIGNAL_META = {
 
 function SignalBars({ bucket }) {
   const meta = SIGNAL_META[bucket] || SIGNAL_META.UNKNOWN;
+
   return (
-    <span className="d-inline-flex align-items-end gap-1" style={{ height: 14 }} title={meta.label}>
+    <span
+      className="d-inline-flex align-items-end gap-1"
+      style={{ height: 14 }}
+      title={meta.label}
+      aria-label={`${meta.label} signal`}
+    >
       {[1, 2, 3].map((bar) => (
         <span
           key={bar}
@@ -29,90 +38,81 @@ function SignalBars({ bucket }) {
   );
 }
 
-export default function ModemStatusPanel() {
+export default function ModemStatusPanel({ compact = false }) {
   const { showToast } = useToast();
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isChecking, setIsChecking] = useState(false);
-  const [cooldownRemaining, setCooldownRemaining] = useState(0);
-  const countdownRef = useRef(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const errorShownRef = useRef(false);
 
   useEffect(() => {
-    loadStatus();
-    return () => clearInterval(countdownRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let isMounted = true;
+    let timer;
 
-  function startCountdown(seconds) {
-    clearInterval(countdownRef.current);
-    setCooldownRemaining(seconds);
-    countdownRef.current = setInterval(() => {
-      setCooldownRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(countdownRef.current);
-          return 0;
+    async function refreshSignal({ initial = false } = {}) {
+      if (!initial && isMounted) setIsRefreshing(true);
+
+      try {
+        const result = await checkModemStatus();
+        if (isMounted) setData(result);
+        errorShownRef.current = false;
+      } catch (error) {
+        const payload = error?.response?.data;
+
+        if (error?.response?.status === 429 && payload?.modems) {
+          if (isMounted) setData(payload);
+        } else {
+          try {
+            const cached = await getModemStatus();
+            if (isMounted) setData(cached);
+          } catch {
+            if (!errorShownRef.current) {
+              showToast("Couldn't refresh modem signal strength.", "error");
+              errorShownRef.current = true;
+            }
+          }
         }
-        return prev - 1;
-      });
-    }, 1000);
-  }
-
-  async function loadStatus() {
-    setIsLoading(true);
-    try {
-      const result = await getModemStatus();
-      setData(result);
-    } catch {
-      showToast("Couldn't load modem status.", "error");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function handleCheckNow() {
-    setIsChecking(true);
-    try {
-      const result = await checkModemStatus();
-      setData(result);
-      startCountdown(result.cooldown_seconds);
-    } catch (error) {
-      const payload = error?.response?.data;
-      if (error?.response?.status === 429 && payload) {
-        setData(payload);
-        startCountdown(payload.retry_after_seconds || payload.cooldown_seconds || 30);
-      } else {
-        showToast("Couldn't check modem status.", "error");
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
-    } finally {
-      setIsChecking(false);
     }
-  }
 
-  const isOnCooldown = cooldownRemaining > 0;
+    refreshSignal({ initial: true });
+    timer = window.setInterval(
+      refreshSignal,
+      DEFAULT_REFRESH_SECONDS * 1000
+    );
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(timer);
+    };
+  }, [showToast]);
 
   return (
     <div className="sg-panel p-3">
-      <div className="d-flex align-items-center justify-content-between mb-3">
+      <div className="d-flex align-items-center justify-content-between mb-3 gap-3">
         <div>
-          <div className="sg-panel-title mb-0">Modem Status</div>
-          <div className="sg-panel-subtitle">Online/offline and signal per SMS module.</div>
+          <div className="sg-panel-title mb-0">
+            {compact ? "Signal Strength" : "Modem Status"}
+          </div>
+          <div className="sg-panel-subtitle">
+            Safe AT+CSQ refresh every {data?.refresh_interval_seconds || DEFAULT_REFRESH_SECONDS} seconds.
+          </div>
         </div>
-        <button
-          className="btn sg-submit-btn btn-sm text-nowrap"
-          onClick={handleCheckNow}
-          disabled={isChecking || isOnCooldown}
+        <span
+          className="badge rounded-pill"
+          style={{
+            background: "var(--sg-signal-100)",
+            color: "var(--sg-signal-600)",
+            fontSize: "0.7rem",
+          }}
         >
-          {isChecking ? (
-            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-          ) : isOnCooldown ? (
-            `Check again in ${cooldownRemaining}s`
-          ) : (
-            <>
-              <i className="bi bi-arrow-clockwise me-1"></i>
-              Check now
-            </>
-          )}
-        </button>
+          {isRefreshing ? "Refreshing…" : "Automatic"}
+        </span>
       </div>
 
       {isLoading ? (
@@ -123,24 +123,24 @@ export default function ModemStatusPanel() {
         </div>
       ) : !data?.modems?.length ? (
         <div className="sg-table-empty">
-          No modems detected yet. Plug in a SIM800 module (any USB port) and click "Check now".
+          No configured modem ports are available for signal monitoring.
         </div>
       ) : (
         <div className="d-flex flex-column gap-2">
           {data.modems.map((modem) => (
             <div
               key={modem.port}
-              className="d-flex align-items-center justify-content-between px-3 py-2"
+              className="d-flex align-items-center justify-content-between px-3 py-2 gap-3"
               style={{ background: "var(--sg-surface-100, #f4f6f8)", borderRadius: 8 }}
             >
-              <div className="d-flex align-items-center gap-2">
+              <div className="d-flex align-items-center gap-2 min-w-0">
                 <span
                   style={{
                     width: 8,
                     height: 8,
                     borderRadius: "50%",
+                    flex: "0 0 auto",
                     background: modem.online ? "var(--sg-signal-600)" : "var(--sg-text-500)",
-                    display: "inline-block",
                   }}
                 />
                 <div>
@@ -149,28 +149,21 @@ export default function ModemStatusPanel() {
                   </div>
                   <div
                     className="sg-cell-muted"
-                    style={{ fontSize: "0.75rem" }}
+                    style={{ fontSize: "0.72rem" }}
                     title={modem.registration_detail || ""}
                   >
-                    {modem.online === null ? "Not checked yet" : modem.online ? "Online" : "Offline"}
-                    {modem.last_checked && ` · checked ${formatDateTime(modem.last_checked)}`}
+                    {modem.online ? "Responding" : "No response"}
+                    {modem.last_checked && ` · ${formatDateTime(modem.last_checked)}`}
                   </div>
-                  {/* A modem can show real signal bars while still being
-                      offline — CSQ (signal) and CREG (network
-                      registration) are independent, so that combination
-                      isn't a bug. Surface *why* here instead of leaving
-                      someone to wonder. */}
-                  {!modem.online && modem.registration_detail && (
-                    <div className="sg-cell-muted" style={{ fontSize: "0.72rem", color: "#c9820a", maxWidth: 320 }}>
-                      {modem.registration_detail}
-                    </div>
-                  )}
                 </div>
               </div>
-              <div className="d-flex align-items-center gap-2">
+              <div className="d-flex align-items-center gap-2 text-nowrap">
                 <SignalBars bucket={modem.signal_bucket} />
-                <span className="sg-cell-muted" style={{ fontSize: "0.78rem", minWidth: 60, textAlign: "right" }}>
+                <span className="sg-cell-muted" style={{ fontSize: "0.76rem", minWidth: 58, textAlign: "right" }}>
                   {SIGNAL_META[modem.signal_bucket]?.label || "Unknown"}
+                  {modem.signal_csq !== null && modem.signal_csq !== undefined && (
+                    <small className="d-block">CSQ {modem.signal_csq}/31</small>
+                  )}
                 </span>
               </div>
             </div>

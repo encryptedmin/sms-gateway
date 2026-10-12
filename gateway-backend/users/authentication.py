@@ -1,11 +1,14 @@
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
+from .session_state import expire_closed_browser_session
+
 
 class SingleSessionJWTAuthentication(JWTAuthentication):
     """Require a JWT to belong to this browser's Django session cookie."""
 
     def authenticate(self, request):
+        expire_closed_browser_session(request)
         authenticated = super().authenticate(request)
 
         if authenticated is None:

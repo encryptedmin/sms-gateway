@@ -4,10 +4,13 @@ import {
   createInstructor,
   updateInstructor,
   deleteInstructor,
+  resetInstructorPassword,
 } from "../../../api/instructorsService";
 import { useToast } from "../../../context/ToastContext";
 import ConfirmDialog from "../../../components/ConfirmDialog";
 import InstructorFormModal from "../components/InstructorFormModal";
+import PasswordModal from "../../../components/PasswordModal";
+import { extractApiError } from "../../../utils/apiErrors";
 
 function extractErrorMessage(error) {
   const data = error?.response?.data;
@@ -29,6 +32,7 @@ export default function InstructorsPage() {
   const [editingInstructor, setEditingInstructor] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [instructorPendingDelete, setInstructorPendingDelete] = useState(null);
+  const [instructorPendingPasswordReset, setInstructorPendingPasswordReset] = useState(null);
 
   useEffect(() => {
     loadInstructors();
@@ -104,6 +108,24 @@ export default function InstructorsPage() {
     }
   }
 
+  async function handlePasswordReset(payload) {
+    if (!instructorPendingPasswordReset) return;
+
+    setIsSubmitting(true);
+    try {
+      await resetInstructorPassword(
+        instructorPendingPasswordReset.id,
+        payload
+      );
+      showToast(`Password reset for "${instructorPendingPasswordReset.username}". Their active sessions were signed out.`);
+      setInstructorPendingPasswordReset(null);
+    } catch (error) {
+      showToast(extractApiError(error, "Couldn't reset this password."), "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <div>
       <div className="sg-panel">
@@ -168,6 +190,14 @@ export default function InstructorsPage() {
                             <i className="bi bi-pencil-fill"></i>
                           </button>
                           <button
+                            className="sg-icon-btn"
+                            onClick={() => setInstructorPendingPasswordReset(instructor)}
+                            aria-label="Reset instructor password"
+                            title="Reset password"
+                          >
+                            <i className="bi bi-key-fill"></i>
+                          </button>
+                          <button
                             className="sg-icon-btn sg-icon-btn-danger"
                             onClick={() => setInstructorPendingDelete(instructor)}
                             aria-label="Remove instructor"
@@ -202,6 +232,15 @@ export default function InstructorsPage() {
         isSubmitting={isSubmitting}
         onConfirm={handleDelete}
         onCancel={() => setInstructorPendingDelete(null)}
+      />
+
+      <PasswordModal
+        show={Boolean(instructorPendingPasswordReset)}
+        title="Reset instructor password"
+        description={`Set a new password for ${instructorPendingPasswordReset?.username || "this account"}. All of their active sessions will be signed out.`}
+        isSubmitting={isSubmitting}
+        onSubmit={handlePasswordReset}
+        onCancel={() => setInstructorPendingPasswordReset(null)}
       />
     </div>
   );
