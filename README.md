@@ -12,6 +12,29 @@ This starts Redis, the Django backend, the Celery worker, and the frontend
 `.env` if port 80 is busy. The SQLite database lives in the `backend-data`
 volume, seeded from `gateway-backend/db.sqlite3` on first start.
 
+### Department Messenger (`messenger/`)
+
+`http://127.0.0.1:8090` is a standalone SMS web app that stands in for another
+department's system. Connect with an API key created by the super admin. It
+talks to the gateway only through the public API (`POST /api/send-sms/` and
+`GET /api/messages/`, both with `Authorization: Bearer <key>`) and adds:
+
+- **Chats** with delivery status (sending / sent / failed, the reason, Resend)
+  and live plan usage.
+- **Contacts** stored per API key: add, edit, delete, search, **groups**, CSV
+  **import** and **export**.
+- **New message** to any mix of groups, contacts and typed numbers; every
+  recipient gets their own SMS, personalized with `{first_name}`,
+  `{last_name}` or `{name}`.
+- **Templates** for common messages.
+- **Scheduled** messages (send later), which can be cancelled while waiting.
+  The app's server hands them to the gateway when due; the API key is kept on
+  a scheduled row only until it is sent or cancelled.
+
+Data lives in the `messenger-data` Docker volume. Without Docker, run
+`python messenger/server.py` (set `GATEWAY_URL` if the gateway is not at
+`http://127.0.0.1:8080`).
+
 Docker on Windows cannot see COM ports, so the SIM800 modems are not reachable
 from the containers unless USB is forwarded to WSL2 (usbipd-win) and the
 `/dev/ttyUSB*` devices are added to the `worker` service. For real modem use,

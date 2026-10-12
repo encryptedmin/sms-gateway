@@ -55,6 +55,24 @@ services:
     depends_on:
       - backend
 
+  # Standalone messaging app that sends SMS through the gateway API.
+  messenger:
+    image: python:3.13-slim
+    restart: unless-stopped
+    working_dir: /app
+    command: python server.py
+    environment:
+      GATEWAY_URL: http://backend:8000
+      MESSENGER_DB: /data/messenger.db
+    volumes:
+      - ./messenger:/app:ro
+      - messenger-data:/data
+    ports:
+      - "${MESSENGER_PORT:-8090}:8090"
+    depends_on:
+      - backend
+
 volumes:
   redis-data:
   backend-data:
+  messenger-data:

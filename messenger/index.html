@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Department Messenger</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --panel: #ffffff; --text: #111827; --muted: #6b7280; --line: #e5e7eb;
+    --brand: #2563eb; --brand-text: #ffffff; --out: #2563eb; --out-text: #ffffff;
+    --ok: #16a34a; --bad: #dc2626; --warn: #d97706; --hover: #f3f4f6; --active: #e8effe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f172a; --panel: #1e293b; --text: #f1f5f9; --muted: #94a3b8; --line: #334155;
+      --brand: #3b82f6; --out: #2563eb; --hover: #273449; --active: #1e3a5f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .btn { background: var(--brand); color: var(--brand-text); border: 0; border-radius: 8px; padding: .5rem 1rem; white-space: nowrap; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.ghost { background: transparent; color: var(--brand); border: 1px solid var(--line); }
+  .btn.danger { background: transparent; color: var(--bad); border: 1px solid var(--line); }
+  .btn.small { padding: .25rem .6rem; font-size: .8rem; }
+  input:not([type=checkbox]), textarea, select { width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .5rem .7rem; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
+  .muted { color: var(--muted); }
+  .hidden { display: none !important; }
+  .error { color: var(--bad); font-size: .85rem; white-space: pre-line; }
+  .error:empty { display: none; }
+
+  /* connect */
+  #connect { min-height: 100%; display: grid; place-items: center; padding: 1rem; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 1.6rem; width: min(420px, 100%); display: grid; gap: .6rem; }
+  .card h1 { margin: 0; font-size: 1.3rem; }
+
+  /* shell */
+  #app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+  header { background: var(--panel); border-bottom: 1px solid var(--line); padding: .6rem 1rem; display: flex; align-items: center; gap: 1rem; }
+  header h2 { margin: 0; font-size: 1rem; flex: 1; }
+  header .quota { font-size: .8rem; color: var(--muted); text-align: right; }
+  .bar { height: 5px; background: var(--line); border-radius: 3px; margin-top: 3px; margin-left: auto; width: 140px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--brand); }
+  main { display: grid; grid-template-columns: 340px 1fr; min-height: 0; }
+  aside { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tabs button { flex: 1; background: none; border: 0; padding: .65rem .2rem; color: var(--muted); border-bottom: 2px solid transparent; font-size: .85rem; position: relative; }
+  .tabs button.on { color: var(--brand); border-bottom-color: var(--brand); font-weight: 600; }
+  .badge { background: var(--warn); color: #fff; border-radius: 9px; font-size: .68rem; padding: 0 .35rem; margin-left: .2rem; }
+  .pane { display: none; flex-direction: column; min-height: 0; flex: 1; }
+  .pane.on { display: flex; }
+  .toolbar { padding: .6rem .7rem 0; display: flex; gap: .4rem; flex-wrap: wrap; }
+  .toolbar input { flex: 1; min-width: 0; }
+  .chips { padding: .5rem .7rem; display: flex; gap: .35rem; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+  .chip { border: 1px solid var(--line); border-radius: 14px; padding: .1rem .6rem; font-size: .78rem; background: none; color: var(--muted); }
+  .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .list { overflow-y: auto; flex: 1; margin-top: .5rem; border-top: 1px solid var(--line); }
+  .item { padding: .6rem .8rem; border-bottom: 1px solid var(--line); cursor: pointer; display: flex; gap: .7rem; align-items: center; }
+  .item:hover { background: var(--hover); }
+  .item.on { background: var(--active); }
+  .item.static { cursor: default; align-items: flex-start; }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--brand); color: #fff; display: grid; place-items: center; font-weight: 600; flex: none; }
+  .item .body { min-width: 0; flex: 1; }
+  .item .top { display: flex; justify-content: space-between; gap: .5rem; }
+  .item .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .time { color: var(--muted); font-size: .75rem; flex: none; }
+  .item .prev { color: var(--muted); font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .wrap { white-space: normal; }
+  .tag { display: inline-block; font-size: .68rem; border: 1px solid var(--line); border-radius: 8px; padding: 0 .4rem; margin: .15rem .2rem 0 0; color: var(--muted); }
+  .empty { color: var(--muted); padding: 2rem 1rem; text-align: center; }
+  .st-SENT, .st-QUEUED { color: var(--ok); } .st-FAILED { color: var(--bad); }
+  .st-PENDING, .st-RETRYING { color: var(--warn); }
+
+  /* thread */
+  section.thread { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .thread-head { background: var(--panel); border-bottom: 1px solid var(--line); padding: .7rem 1rem; display: flex; align-items: center; gap: .7rem; }
+  .thread-head .grow { flex: 1; min-width: 0; }
+  .thread-head .back { display: none; background: none; border: 0; font-size: 1.3rem; padding: 0 .4rem; }
+  .thread-head .who { font-weight: 600; }
+  .msgs { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+  .bubble { align-self: flex-end; background: var(--out); color: var(--out-text); border-radius: 14px 14px 3px 14px; padding: .5rem .8rem; max-width: min(75%, 520px); white-space: pre-wrap; word-break: break-word; }
+  .meta { align-self: flex-end; font-size: .72rem; color: var(--muted); margin: -.3rem .2rem .3rem; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .placeholder { margin: auto; text-align: center; color: var(--muted); }
+  .composer { background: var(--panel); border-top: 1px solid var(--line); padding: .6rem 1rem; display: flex; gap: .6rem; align-items: flex-end; }
+  .composer textarea { resize: none; max-height: 140px; }
+  .composer select { width: 130px; flex: none; }
+  .count { font-size: .72rem; color: var(--muted); padding: 0 1rem .4rem; background: var(--panel); text-align: right; min-height: 1.1rem; }
+
+  /* modal */
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: grid; place-items: center; padding: 1rem; z-index: 10; }
+  .modal { background: var(--panel); border-radius: 14px; width: min(520px, 100%); max-height: 92vh; display: flex; flex-direction: column; }
+  .modal h3 { margin: 0; padding: .9rem 1.1rem; border-bottom: 1px solid var(--line); }
+  .modal .scroll { overflow-y: auto; padding: 1rem 1.1rem; display: grid; gap: .7rem; }
+  .modal .foot { border-top: 1px solid var(--line); padding: .8rem 1.1rem; display: flex; justify-content: flex-end; gap: .5rem; }
+  .field > span { display: block; font-weight: 600; font-size: .82rem; margin-bottom: .25rem; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+  .pick { max-height: 170px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .pick label { display: flex; gap: .6rem; align-items: center; padding: .35rem .6rem; cursor: pointer; }
+  .pick label:hover { background: var(--hover); }
+  .pick .sub { color: var(--muted); font-size: .8rem; }
+  .inline { display: flex; gap: .5rem; align-items: center; }
+  .progress { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--brand); transition: width .2s; }
+  .toast { position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; padding: .6rem 1.1rem; border-radius: 10px; z-index: 20; max-width: 90vw; }
+
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; }
+    aside { border-right: 0; }
+    main.in-thread aside { display: none; }
+    main:not(.in-thread) section.thread { display: none; }
+    .thread-head .back { display: block; }
+    header .bar { display: none; }
+    .row2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div id="connect">
+  <div class="card">
+    <h1>Department Messenger</h1>
+    <div class="muted">Send SMS through the school gateway using your department's API key.</div>
+    <label class="field"><span>API key</span>
+      <input id="key" type="password" autocomplete="off" placeholder="Paste the key from the super admin"></label>
+    <div class="error" id="connect-error"></div>
+    <button class="btn" id="connect-btn">Connect</button>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h2 id="account-name"></h2>
+    <div class="quota"><span id="quota-text"></span><div class="bar hidden" id="quota-bar"><div></div></div></div>
+    <button class="btn ghost small" id="disconnect">Disconnect</button>
+  </header>
+  <main id="main">
+    <aside>
+      <div class="tabs">
+        <button data-tab="chats" class="on">Chats</button>
+        <button data-tab="contacts">Contacts</button>
+        <button data-tab="scheduled">Scheduled<span class="badge hidden" id="sched-badge"></span></button>
+        <button data-tab="templates">Templates</button>
+      </div>
+
+      <div class="pane on" id="pane-chats">
+        <div class="toolbar">
+          <input id="search" placeholder="Search chats">
+          <button class="btn" id="new-msg" title="New message">+ New</button>
+        </div>
+        <div class="list" id="chat-list"></div>
+      </div>
+
+      <div class="pane" id="pane-contacts">
+        <div class="toolbar">
+          <input id="contact-search" placeholder="Search contacts">
+          <button class="btn" id="add-contact">+ Contact</button>
+        </div>
+        <div class="toolbar" style="padding-top:.4rem">
+          <button class="btn ghost small" id="manage-groups">Groups</button>
+          <button class="btn ghost small" id="import-contacts">Import CSV</button>
+          <button class="btn ghost small" id="export-contacts">Export CSV</button>
+        </div>
+        <div class="chips" id="group-chips"></div>
+        <div class="list" id="contact-list" style="margin-top:0;border-top:0"></div>
+      </div>
+
+      <div class="pane" id="pane-scheduled">
+        <div class="list" id="scheduled-list" style="margin-top:0;border-top:0"></div>
+      </div>
+
+      <div class="pane" id="pane-templates">
+        <div class="toolbar"><button class="btn" id="add-template">+ Template</button></div>
+        <div class="list" id="template-list"></div>
+      </div>
+    </aside>
+
+    <section class="thread">
+      <div id="thread-empty" class="placeholder">
+        <div style="font-size:2.2rem">&#128172;</div>
+        <div>Select a chat or start a new message</div>
+      </div>
+      <div id="thread-view" class="pane" style="flex:1">
+        <div class="thread-head">
+          <button class="back" id="back" aria-label="Back">&#8592;</button>
+          <div class="avatar" id="thread-avatar"></div>
+          <div class="grow"><div class="who" id="thread-name"></div><div class="muted" id="thread-number" style="font-size:.8rem"></div></div>
+          <button class="btn ghost small" id="thread-contact"></button>
+        </div>
+        <div class="msgs" id="msgs"></div>
+        <div class="count" id="count"></div>
+        <form class="composer" id="composer">
+          <select id="tpl-pick" title="Insert a template"><option value="">Template...</option></select>
+          <textarea id="text" rows="1" placeholder="Type a message" required></textarea>
+          <button class="btn" id="send" type="submit">Send</button>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+
+let apiKey = store.get("msgr_key", "");
+let data = { contacts: [], groups: [], templates: [], scheduled: [] };
+let messages = [];        // newest first, from the gateway
+let current = null;       // open chat's number
+let tab = "chats";
+let groupFilter = null;
+let timer = null;
+
+/* ---------- helpers ---------- */
+function normalize(raw) {
+  const n = String(raw).replace(/[\s\-().]/g, "");
+  return /^\+?[0-9]{7,15}$/.test(n) ? n : null;
+}
+// 0917..., 63917... and +63917... are the same phone.
+function key(n) {
+  const d = n.replace(/^\+/, "");
+  return d.startsWith("63") ? d.slice(2) : d.startsWith("0") ? d.slice(1) : d;
+}
+const fullName = (c) => [c.first_name, c.last_name].filter(Boolean).join(" ");
+const contactFor = (n) => data.contacts.find((c) => key(c.number) === key(n));
+const nameFor = (n) => { const c = contactFor(n); return c ? fullName(c) : n; };
+const initials = (s) => (s.replace(/[^A-Za-z0-9 ]/g, "").trim()[0] || "#").toUpperCase();
+function when(iso) {
+  const d = new Date(iso), now = new Date();
+  return d.toDateString() === now.toDateString()
+    ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+const fullWhen = (epoch) => new Date(epoch * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+function el(tag, props = {}, ...kids) {
+  const e = Object.assign(document.createElement(tag), props);
+  kids.flat().forEach((k) => e.append(k));
+  return e;
+}
+const btn = (text, onclick, cls = "") => el("button", { type: "button", className: "btn " + cls, textContent: text, onclick });
+function field(label, input) { return el("label", { className: "field" }, el("span", { textContent: label }), input); }
+function toast(text) {
+  const t = el("div", { className: "toast", textContent: text });
+  document.body.append(t);
+  setTimeout(() => t.remove(), 3500);
+}
+// {first_name}, {last_name}, {name}; unknown contacts read as "there".
+function personalize(tpl, c) {
+  const first = c?.first_name || "there";
+  return tpl
+    .replace(/\{first_name\}/g, first)
+    .replace(/\{last_name\}/g, c?.last_name || "")
+    .replace(/\{name\}/g, (c && fullName(c)) || "there")
+    .replace(/ +/g, " ").trim();
+}
+function countText(len) {
+  if (!len) return "";
+  return `${len} characters - ${len <= 160 ? 1 : Math.ceil(len / 153)} SMS`;
+}
+
+async function request(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json", "X-Api-Key": apiKey },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let payload = {};
+  try { payload = await res.json(); } catch {}
+  if (!res.ok) throw Object.assign(new Error(payload.error || `Request failed (${res.status})`), { status: res.status });
+  return payload;
+}
+// Mutations return the fresh snapshot of contacts/groups/templates/scheduled.
+async function mutate(method, path, body) {
+  const res = await request(method, path, body ?? {});
+  data = res.data;
+  render();
+  return res;
+}
+
+function openModal(title, content, actions = []) {
+  const bg = el("div", { className: "modal-bg" });
+  const foot = el("div", { className: "foot" }, actions);
+  const scroll = el("div", { className: "scroll" }, content);
+  bg.append(el("div", { className: "modal" }, el("h3", { textContent: title }), scroll, foot));
+  document.body.append(bg);
+  const close = () => bg.remove();
+  bg.addEventListener("mousedown", (e) => { if (e.target === bg) close(); });
+  return { close, scroll, foot };
+}
+const cancelBtn = (text = "Cancel") => btn(text, (e) => e.target.closest(".modal-bg").remove(), "ghost");
+
+/* ---------- connect ---------- */
+async function connect(k) {
+  apiKey = k;
+  const [msgs, all] = await Promise.all([request("GET", "/api/messages"), request("GET", "/api/data")]);
+  store.set("msgr_key", k);
+  data = all.data;
+  $("connect").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  applyMessages(msgs);
+  render();
+  clearInterval(timer);
+  timer = setInterval(() => { if (!document.hidden) refresh(); }, 4000);
+}
+$("connect-btn").onclick = async () => {
+  $("connect-error").textContent = "";
+  const k = $("key").value.trim();
+  if (!k) { $("connect-error").textContent = "Enter your API key."; return; }
+  $("connect-btn").disabled = true;
+  try { await connect(k); }
+  catch (e) { $("connect-error").textContent = e.status === 403 ? "That API key is not valid or is disabled." : e.message; }
+  $("connect-btn").disabled = false;
+};
+$("key").addEventListener("keydown", (e) => { if (e.key === "Enter") $("connect-btn").click(); });
+$("disconnect").onclick = () => {
+  clearInterval(timer);
+  store.del("msgr_key");
+  apiKey = ""; messages = []; current = null;
+  data = { contacts: [], groups: [], templates: [], scheduled: [] };
+  $("app").classList.add("hidden");
+  $("connect").classList.remove("hidden");
+  $("key").value = "";
+};
+
+function applyMessages(res) {
+  messages = res.messages;
+  $("account-name").textContent = res.account.name;
+  const plan = res.account.plan, bar = $("quota-bar");
+  if (!plan) {
+    $("quota-text").textContent = "No active plan - sending is disabled";
+    bar.classList.add("hidden");
+  } else if (plan.type === "LIMITED") {
+    $("quota-text").textContent = `${plan.name}: ${plan.used} / ${plan.limit} messages this period`;
+    bar.classList.remove("hidden");
+    bar.firstChild.style.width = Math.min(100, (plan.used / plan.limit) * 100) + "%";
+  } else {
+    $("quota-text").textContent = `${plan.name}: unlimited`;
+    bar.classList.add("hidden");
+  }
+}
+async function refresh() {
+  try {
+    const [msgs, all] = await Promise.all([request("GET", "/api/messages"), request("GET", "/api/data")]);
+    data = all.data;
+    applyMessages(msgs);
+    render();
+  } catch (e) { if (e.status === 403) $("disconnect").click(); }
+}
+
+/* ---------- tabs ---------- */
+function showTab(t) {
+  tab = t;
+  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  document.querySelectorAll("aside .pane").forEach((p) => p.classList.toggle("on", p.id === "pane-" + t));
+}
+document.querySelectorAll(".tabs button").forEach((b) => { b.onclick = () => showTab(b.dataset.tab); });
+
+/* ---------- chats & thread ---------- */
+function conversations() {
+  const map = new Map();
+  for (const m of messages) {
+    const k = key(m.recipient);
+    if (!map.has(k)) map.set(k, { number: m.recipient, last: m });
+  }
+  return [...map.values()];
+}
+function renderChats() {
+  const q = $("search").value.trim().toLowerCase();
+  const list = $("chat-list");
+  list.replaceChildren();
+  const convs = conversations().filter((c) => !q || nameFor(c.number).toLowerCase().includes(q) || c.number.includes(q));
+  if (!convs.length) list.append(el("div", { className: "empty", textContent: "No conversations yet. Use + New to send a message." }));
+  for (const c of convs) {
+    const name = nameFor(c.number);
+    list.append(el("div", { className: "item" + (current && key(current) === key(c.number) ? " on" : ""), onclick: () => openChat(c.number) },
+      el("div", { className: "avatar", textContent: initials(name) }),
+      el("div", { className: "body" },
+        el("div", { className: "top" }, el("span", { className: "name", textContent: name }), el("span", { className: "time", textContent: when(c.last.created_at) })),
+        el("div", { className: "prev", textContent: (c.last.status === "FAILED" ? "! " : "") + c.last.message }))));
+  }
+}
+const statusLabel = (m) => ({ SENT: "Sent", FAILED: "Failed", RETRYING: "Retrying..." }[m.status] || "Sending...");
+
+function renderThread() {
+  const show = current !== null;
+  $("thread-empty").style.display = show ? "none" : "";
+  $("thread-view").classList.toggle("on", show);
+  $("main").classList.toggle("in-thread", show);
+  if (!show) return;
+  const contact = contactFor(current), name = nameFor(current);
+  $("thread-name").textContent = name;
+  $("thread-number").textContent = contact ? current : "";
+  $("thread-avatar").textContent = initials(name);
+  const cbtn = $("thread-contact");
+  cbtn.textContent = contact ? "Edit contact" : "Save contact";
+  cbtn.onclick = () => contactModal(contact || { number: current });
+
+  const box = $("msgs");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  box.replaceChildren();
+  const items = messages.filter((m) => key(m.recipient) === key(current)).reverse();
+  if (!items.length) box.append(el("div", { className: "placeholder", textContent: "No messages yet. Say hello!" }));
+  for (const m of items) {
+    box.append(el("div", { className: "bubble", textContent: m.message }));
+    const meta = el("div", { className: "meta" },
+      el("span", { textContent: when(m.created_at) }),
+      el("span", { className: "st-" + m.status, textContent: statusLabel(m) }));
+    if (m.status === "FAILED") {
+      if (m.error) meta.append(el("span", { textContent: "- " + m.error.slice(0, 80), title: m.error }));
+      meta.append(btn("Resend", () => resend(m), "ghost small"));
+    }
+    box.append(meta);
+  }
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+async function resend(m) {
+  try { await request("POST", "/api/send", { recipient: m.recipient, message: m.message }); await refresh(); }
+  catch (e) { toast("Not sent: " + e.message); }
+}
+function openChat(number) {
+  current = number;
+  showTab("chats");
+  render();
+  $("msgs").scrollTop = $("msgs").scrollHeight;
+  $("text").focus();
+}
+$("back").onclick = () => { current = null; render(); };
+$("search").oninput = renderChats;
+
+$("text").addEventListener("input", (e) => {
+  e.target.style.height = "auto";
+  e.target.style.height = e.target.scrollHeight + "px";
+  $("count").textContent = countText(e.target.value.length);
+});
+$("text").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); }
+});
+$("tpl-pick").onchange = (e) => {
+  const t = data.templates.find((x) => String(x.id) === e.target.value);
+  e.target.value = "";
+  if (!t) return;
+  $("text").value = personalize(t.content, contactFor(current));
+  $("text").dispatchEvent(new Event("input"));
+  $("text").focus();
+};
+$("composer").onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $("text").value.trim();
+  if (!text || !current) return;
+  $("send").disabled = true;
+  try {
+    await request("POST", "/api/send", { recipient: current, message: text });
+    $("text").value = ""; $("text").style.height = "auto"; $("count").textContent = "";
+    await refresh();
+    $("msgs").scrollTop = $("msgs").scrollHeight;
+  } catch (err) { toast("Message not sent: " + err.message); }
+  $("send").disabled = false;
+};
+
+/* ---------- contacts ---------- */
+function renderContacts() {
+  const q = $("contact-search").value.trim().toLowerCase();
+  const chips = $("group-chips");
+  chips.replaceChildren(el("button", { className: "chip" + (groupFilter === null ? " on" : ""), textContent: "All " + data.contacts.length, onclick: () => { groupFilter = null; renderContacts(); } }));
+  for (const g of data.groups) {
+    const n = data.contacts.filter((c) => c.group_ids.includes(g.id)).length;
+    chips.append(el("button", { className: "chip" + (groupFilter === g.id ? " on" : ""), textContent: `${g.name} ${n}`, onclick: () => { groupFilter = g.id; renderContacts(); } }));
+  }
+  const list = $("contact-list");
+  list.replaceChildren();
+  const rows = data.contacts.filter((c) =>
+    (groupFilter === null || c.group_ids.includes(groupFilter)) &&
+    (!q || fullName(c).toLowerCase().includes(q) || c.number.includes(q)));
+  if (!rows.length) list.append(el("div", { className: "empty", textContent: data.contacts.length ? "No matching contacts." : "No contacts yet. Add one or import a CSV." }));
+  for (const c of rows) {
+    const tags = el("div", {}, data.groups.filter((g) => c.group_ids.includes(g.id)).map((g) => el("span", { className: "tag", textContent: g.name })));
+    list.append(el("div", { className: "item", onclick: () => openChat(c.number) },
+      el("div", { className: "avatar", textContent: initials(c.first_name) }),
+      el("div", { className: "body" }, el("div", { className: "name", textContent: fullName(c) }), el("div", { className: "prev", textContent: c.number + (c.note ? " - " + c.note : "") }), tags),
+      btn("Edit", (ev) => { ev.stopPropagation(); contactModal(c); }, "ghost small")));
+  }
+}
+$("contact-search").oninput = renderContacts;
+$("add-contact").onclick = () => contactModal({});
+
+function contactModal(c) {
+  const editing = !!c.id;
+  const first = el("input", { value: c.first_name || "", required: true });
+  const last = el("input", { value: c.last_name || "" });
+  const number = el("input", { value: c.number || "", placeholder: "09171234567 or +639171234567" });
+  const note = el("input", { value: c.note || "", placeholder: "Optional" });
+  const err = el("div", { className: "error" });
+  const picks = data.groups.map((g) => ({ g, box: el("input", { type: "checkbox", checked: (c.group_ids || []).includes(g.id) }) }));
+  const newGroup = el("input", { placeholder: "Create a new group..." });
+  const modal = openModal(editing ? "Edit contact" : "New contact", [
+    el("div", { className: "row2" }, field("First name", first), field("Last name", last)),
+    field("Mobile number", number),
+    field("Note", note),
+    el("div", { className: "field" }, el("span", { textContent: "Groups" }),
+      picks.length ? el("div", { className: "pick" }, picks.map((p) => el("label", {}, p.box, el("span", { textContent: p.g.name })))) : el("div", { className: "muted", textContent: "No groups yet." }),
+      el("div", { style: "margin-top:.4rem" }, newGroup)),
+    err,
+  ], [
+    editing ? btn("Delete", async () => {
+      if (!confirm(`Delete ${fullName(c)}?`)) return;
+      try { await mutate("DELETE", "/api/contacts/" + c.id); modal.close(); } catch (e) { err.textContent = e.message; }
+    }, "danger") : "",
+    cancelBtn(),
+    btn("Save", async () => {
+      err.textContent = "";
+      const n = normalize(number.value);
+      if (!first.value.trim()) { err.textContent = "First name is required."; return; }
+      if (!n) { err.textContent = "Enter a valid phone number (7-15 digits)."; return; }
+      try {
+        let ids = picks.filter((p) => p.box.checked).map((p) => p.g.id);
+        const extra = newGroup.value.trim();
+        if (extra) {
+          const existing = data.groups.find((g) => g.name.toLowerCase() === extra.toLowerCase());
+          if (existing) ids.push(existing.id);
+          else { await mutate("POST", "/api/groups", { name: extra }); ids.push(data.groups.find((g) => g.name.toLowerCase() === extra.toLowerCase()).id); }
+        }
+        const body = { first_name: first.value, last_name: last.value, number: n, note: note.value, group_ids: [...new Set(ids)] };
+        await mutate(editing ? "PUT" : "POST", editing ? "/api/contacts/" + c.id : "/api/contacts", body);
+        modal.close();
+        toast(editing ? "Contact updated" : "Contact added");
+      } catch (e) { err.textContent = e.message; }
+    }),
+  ]);
+  first.focus();
+}
+
+function groupsModal() {
+  const err = el("div", { className: "error" });
+  const holder = el("div", { style: "display:grid;gap:.5rem" });
+  const newName = el("input", { placeholder: "New group name" });
+  const modal = openModal("Groups", [holder, el("div", { className: "inline" }, newName, btn("Add", async () => {
+    err.textContent = "";
+    try { await mutate("POST", "/api/groups", { name: newName.value }); newName.value = ""; draw(); } catch (e) { err.textContent = e.message; }
+  })), err], [cancelBtn("Close")]);
+  function draw() {
+    holder.replaceChildren();
+    if (!data.groups.length) holder.append(el("div", { className: "muted", textContent: "No groups yet." }));
+    for (const g of data.groups) {
+      const input = el("input", { value: g.name });
+      const members = data.contacts.filter((c) => c.group_ids.includes(g.id));
+      holder.append(el("div", { className: "inline" }, input,
+        el("span", { className: "muted", textContent: members.length + (members.length === 1 ? " member" : " members"), style: "font-size:.8rem;white-space:nowrap" }),
+        btn("Save", async () => { err.textContent = ""; try { await mutate("PUT", "/api/groups/" + g.id, { name: input.value }); draw(); } catch (e) { err.textContent = e.message; } }, "ghost small"),
+        btn("Message", () => { modal.close(); composeModal({ groupIds: [g.id] }); }, "ghost small"),
+        btn("Delete", async () => {
+          if (!confirm(`Delete the group "${g.name}"? Its contacts are kept.`)) return;
+          try { await mutate("DELETE", "/api/groups/" + g.id); if (groupFilter === g.id) groupFilter = null; draw(); renderContacts(); } catch (e) { err.textContent = e.message; }
+        }, "danger small")));
+    }
+  }
+  draw();
+}
+$("manage-groups").onclick = groupsModal;
+
+/* CSV */
+function parseCSV(text) {
+  const rows = []; let row = [], cell = "", quoted = false;
+  const endRow = () => { row.push(cell); cell = ""; if (row.some((c) => c.trim())) rows.push(row); row = []; };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else quoted = false; } else cell += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ",") { row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; endRow(); }
+    else cell += ch;
+  }
+  endRow();
+  return rows;
+}
+const csvCell = (v) => /[",\n]/.test(v) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+function rowsToContacts(rows) {
+  const looksLikePhone = (s) => /^\+?[0-9][0-9\s\-().]{5,}$/.test(s.trim());
+  const hasHeader = !rows[0].some(looksLikePhone);
+  const head = hasHeader ? rows.shift().map((h) => h.trim().toLowerCase().replace(/[\s-]+/g, "_")) : ["name", "number", "group"];
+  const col = (...names) => head.findIndex((h) => names.includes(h));
+  const idx = {
+    first: col("first_name", "firstname", "first"), last: col("last_name", "lastname", "last", "surname"),
+    name: col("name", "full_name", "fullname"), number: col("number", "mobile_number", "mobile", "phone", "phone_number", "contact"),
+    group: col("group", "groups"), note: col("note", "notes"),
+  };
+  const get = (r, i) => (i >= 0 && r[i] !== undefined ? r[i].trim() : "");
+  return rows.map((r) => {
+    let first = get(r, idx.first), last = get(r, idx.last);
+    if (!first && idx.name >= 0) { const [f, ...rest] = get(r, idx.name).split(/\s+/); first = f || ""; last = rest.join(" "); }
+    return { first_name: first, last_name: last, number: get(r, idx.number), group: get(r, idx.group), note: get(r, idx.note) };
+  });
+}
+function importModal() {
+  const area = el("textarea", { rows: 8, placeholder: "first_name,last_name,number,group\nJuan,Dela Cruz,09171234567,BSIT 3A\n\nor simply:  Juan Dela Cruz,09171234567" });
+  const file = el("input", { type: "file", accept: ".csv,.txt,text/csv" });
+  const out = el("div", { className: "error" });
+  file.onchange = async () => { if (file.files[0]) area.value = await file.files[0].text(); };
+  const go = btn("Import", async () => {
+    out.textContent = ""; out.style.color = "";
+    const rows = parseCSV(area.value);
+    if (!rows.length) { out.textContent = "Paste or choose a CSV first."; return; }
+    go.disabled = true;
+    try {
+      const res = await mutate("POST", "/api/contacts/import", { rows: rowsToContacts(rows) });
+      const lines = [`Imported ${res.added}, skipped ${res.skipped} already saved${res.error_count ? `, ${res.error_count} invalid` : ""}.`, ...res.errors];
+      out.style.color = res.added ? "var(--ok)" : "var(--bad)";
+      out.textContent = lines.join("\n");
+    } catch (e) { out.textContent = e.message; }
+    go.disabled = false;
+  });
+  const modal = openModal("Import contacts", [
+    el("div", { className: "muted", style: "font-size:.85rem", textContent: "Columns: first_name, last_name, number, group, note. Several groups can be separated by ;. Numbers already saved are skipped." }),
+    field("CSV file", file), field("...or paste CSV", area), out,
+  ], [cancelBtn("Close"), go]);
+}
+$("import-contacts").onclick = importModal;
+$("export-contacts").onclick = () => {
+  if (!data.contacts.length) { toast("No contacts to export"); return; }
+  const lines = [["first_name", "last_name", "number", "group", "note"].join(",")];
+  for (const c of data.contacts) {
+    const groups = data.groups.filter((g) => c.group_ids.includes(g.id)).map((g) => g.name).join(";");
+    lines.push([c.first_name, c.last_name, c.number, groups, c.note].map(csvCell).join(","));
+  }
+  const url = URL.createObjectURL(new Blob([lines.join("\r\n")], { type: "text/csv" }));
+  el("a", { href: url, download: "contacts.csv" }).click();
+  URL.revokeObjectURL(url);
+};
+
+/* ---------- templates ---------- */
+function renderTemplates() {
+  const list = $("template-list");
+  list.replaceChildren();
+  if (!data.templates.length) list.append(el("div", { className: "empty", textContent: "No templates yet. Save common messages here; use {first_name} to personalize." }));
+  for (const t of data.templates) {
+    list.append(el("div", { className: "item static" },
+      el("div", { className: "body" },
+        el("div", { className: "name", textContent: t.title }),
+        el("div", { className: "prev wrap", textContent: t.content }),
+        el("div", { style: "margin-top:.4rem;display:flex;gap:.4rem" },
+          btn("Use", () => composeModal({ text: t.content }), "small"),
+          btn("Edit", () => templateModal(t), "ghost small")))));
+  }
+  const pick = $("tpl-pick");
+  pick.replaceChildren(el("option", { value: "", textContent: "Template..." }), ...data.templates.map((t) => el("option", { value: t.id, textContent: t.title })));
+}
+$("add-template").onclick = () => templateModal({});
+function templateModal(t) {
+  const editing = !!t.id;
+  const title = el("input", { value: t.title || "" });
+  const content = el("textarea", { rows: 5, value: t.content || "", placeholder: "Hi {first_name}, ..." });
+  const err = el("div", { className: "error" });
+  const modal = openModal(editing ? "Edit template" : "New template", [
+    field("Title", title), field("Message", content),
+    el("div", { className: "muted", style: "font-size:.8rem", textContent: "Placeholders: {first_name} {last_name} {name}" }), err,
+  ], [
+    editing ? btn("Delete", async () => {
+      if (!confirm("Delete this template?")) return;
+      try { await mutate("DELETE", "/api/templates/" + t.id); modal.close(); } catch (e) { err.textContent = e.message; }
+    }, "danger") : "",
+    cancelBtn(),
+    btn("Save", async () => {
+      try {
+        await mutate(editing ? "PUT" : "POST", editing ? "/api/templates/" + t.id : "/api/templates", { title: title.value, content: content.value });
+        modal.close();
+      } catch (e) { err.textContent = e.message; }
+    }),
+  ]);
+  title.focus();
+}
+
+/* ---------- scheduled ---------- */
+const schedLabel = { PENDING: "Waiting", QUEUED: "Handed to gateway", FAILED: "Failed" };
+function renderScheduled() {
+  const list = $("scheduled-list");
+  list.replaceChildren();
+  const waiting = data.scheduled.filter((s) => s.status === "PENDING").length;
+  $("sched-badge").textContent = waiting;
+  $("sched-badge").classList.toggle("hidden", !waiting);
+  if (!data.scheduled.length) list.append(el("div", { className: "empty", textContent: "Nothing scheduled. Use + New > Send later." }));
+  for (const s of data.scheduled) {
+    const st = el("span", { className: "st-" + (s.status === "PENDING" ? "PENDING" : s.status), textContent: schedLabel[s.status] || s.status });
+    list.append(el("div", { className: "item static" },
+      el("div", { className: "avatar", textContent: initials(nameFor(s.number)) }),
+      el("div", { className: "body" },
+        el("div", { className: "top" }, el("span", { className: "name", textContent: nameFor(s.number) }), el("span", { className: "time", textContent: fullWhen(s.send_at) })),
+        el("div", { className: "prev wrap", textContent: s.message }),
+        el("div", { style: "font-size:.78rem;margin-top:.2rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap" },
+          st, s.error ? el("span", { className: "muted", textContent: s.error }) : "",
+          s.status === "PENDING" ? btn("Cancel", async () => { try { await mutate("DELETE", "/api/schedule/" + s.id); toast("Cancelled"); } catch (e) { toast(e.message); } }, "danger small") : ""))));
+  }
+}
+
+/* ---------- compose / bulk send ---------- */
+function localInputValue(date) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}T${p(date.getHours())}:${p(date.getMinutes())}`;
+}
+function composeModal(preset = {}) {
+  const chosen = new Set(preset.contactIds || []);
+  const groupsOn = new Set(preset.groupIds || []);
+  const search = el("input", { placeholder: "Search contacts" });
+  const pick = el("div", { className: "pick" });
+  const groupRow = el("div", { className: "chips", style: "padding:0;border:0" });
+  const extra = el("input", { placeholder: "Other numbers, comma separated" });
+  const tpl = el("select", {}, el("option", { value: "", textContent: "Insert a template..." }), ...data.templates.map((t) => el("option", { value: t.id, textContent: t.title })));
+  const text = el("textarea", { rows: 4, value: preset.text || "", placeholder: "Message. Use {first_name} to personalize." });
+  const count = el("div", { className: "muted", style: "font-size:.75rem;text-align:right" });
+  const later = el("input", { type: "checkbox" });
+  const whenInput = el("input", { type: "datetime-local", min: localInputValue(new Date()), value: localInputValue(new Date(Date.now() + 3600e3)), disabled: true });
+  const summary = el("div", { className: "muted", style: "font-size:.85rem" });
+  const err = el("div", { className: "error" });
+  const sendBtn = btn("Send", () => submit());
+
+  function recipients() {
+    const map = new Map();
+    const add = (number, contact) => { if (!map.has(key(number))) map.set(key(number), { number, contact }); };
+    data.contacts.forEach((c) => { if (chosen.has(c.id) || c.group_ids.some((g) => groupsOn.has(g))) add(c.number, c); });
+    for (const raw of extra.value.split(",").map((s) => s.trim()).filter(Boolean)) {
+      const n = normalize(raw);
+      if (n) add(n, contactFor(n));
+    }
+    return [...map.values()];
+  }
+  function drawPick() {
+    const q = search.value.trim().toLowerCase();
+    pick.replaceChildren();
+    const rows = data.contacts.filter((c) => !q || fullName(c).toLowerCase().includes(q) || c.number.includes(q));
+    if (!rows.length) pick.append(el("div", { className: "empty", textContent: data.contacts.length ? "No matches." : "No contacts saved. Type numbers below." }));
+    for (const c of rows) {
+      const box = el("input", { type: "checkbox", checked: chosen.has(c.id) });
+      box.onchange = () => { box.checked ? chosen.add(c.id) : chosen.delete(c.id); update(); };
+      pick.append(el("label", {}, box, el("span", { textContent: fullName(c) }), el("span", { className: "sub", textContent: c.number })));
+    }
+  }
+  function drawGroups() {
+    groupRow.replaceChildren();
+    data.groups.forEach((g) => groupRow.append(el("button", { type: "button", className: "chip" + (groupsOn.has(g.id) ? " on" : ""), textContent: g.name,
+      onclick: () => { groupsOn.has(g.id) ? groupsOn.delete(g.id) : groupsOn.add(g.id); drawGroups(); update(); } })));
+    if (!data.groups.length) groupRow.append(el("span", { className: "muted", style: "font-size:.8rem", textContent: "No groups yet." }));
+  }
+  function update() {
+    const n = recipients().length;
+    count.textContent = countText(text.value.length);
+    whenInput.disabled = !later.checked;
+    sendBtn.textContent = later.checked ? `Schedule for ${n}` : `Send to ${n}`;
+    summary.textContent = n ? `${n} recipient${n === 1 ? "" : "s"} - each gets their own SMS` : "Choose at least one recipient.";
+  }
+  tpl.onchange = () => { const t = data.templates.find((x) => String(x.id) === tpl.value); tpl.value = ""; if (t) { text.value = t.content; update(); } };
+  [search].forEach((i) => (i.oninput = drawPick));
+  [extra, text, later].forEach((i) => i.addEventListener("input", update));
+  later.onchange = update;
+
+  const modal = openModal("New message", [
+    data.groups.length ? field("Groups", groupRow) : "",
+    field("Contacts", el("div", { style: "display:grid;gap:.4rem" }, search, pick)),
+    field("Other numbers", extra),
+    field("Message", el("div", { style: "display:grid;gap:.4rem" }, tpl, text, count)),
+    el("label", { className: "inline" }, later, el("span", { textContent: "Send later" }), when),
+    summary, err,
+  ], [cancelBtn(), sendBtn]);
+  drawGroups(); drawPick(); update();
+  text.focus();
+
+  async function submit() {
+    err.textContent = "";
+    const raws = extra.value.split(",").map((s) => s.trim()).filter(Boolean);
+    const bad = raws.find((r) => !normalize(r));
+    if (bad) { err.textContent = `"${bad}" is not a valid phone number.`; return; }
+    const list = recipients();
+    const body = text.value.trim();
+    if (!list.length) { err.textContent = "Choose at least one recipient."; return; }
+    if (!body) { err.textContent = "Write a message."; return; }
+    if (list.length > 1 && !confirm(`Send this message to ${list.length} people?`)) return;
+    sendBtn.disabled = true;
+
+    if (later.checked) {
+      const at = new Date(whenInput.value).getTime();
+      if (!at) { err.textContent = "Choose when to send."; sendBtn.disabled = false; return; }
+      try {
+        await mutate("POST", "/api/schedule", {
+          send_at: Math.floor(at / 1000),
+          items: list.map((r) => ({ number: r.number, name: r.contact ? fullName(r.contact) : "", message: personalize(body, r.contact) })),
+        });
+        modal.close(); showTab("scheduled");
+        toast(`Scheduled ${list.length} message${list.length === 1 ? "" : "s"}`);
+      } catch (e) { err.textContent = e.message; sendBtn.disabled = false; }
+      return;
+    }
+    await sendNow(list, body);
+  }
+
+  async function sendNow(list, body) {
+    const bar = el("div", {}), status = el("div", { className: "muted", textContent: `Sending 0 of ${list.length}...` });
+    const fill = el("div", { style: "width:0" }); bar.className = "progress"; bar.append(fill);
+    const failures = el("div", { className: "error" });
+    modal.scroll.replaceChildren(status, bar, failures);
+    modal.foot.replaceChildren();
+    let done = 0, failed = 0;
+    for (const r of list) {
+      try { await request("POST", "/api/send", { recipient: r.number, message: personalize(body, r.contact) }); }
+      catch (e) {
+        failed++;
+        failures.textContent += `${r.contact ? fullName(r.contact) : r.number}: ${e.message}\n`;
+        if (e.status === 429 || e.status === 403) { failures.textContent += "Stopped - the account cannot send right now.\n"; break; }
+      }
+      done++;
+      status.textContent = `Sending ${done} of ${list.length}...`;
+      fill.style.width = (done / list.length) * 100 + "%";
+    }
+    await refresh();
+    status.textContent = `Done: ${done - failed} queued${failed ? `, ${failed} not sent` : ""}. Delivery status appears in Chats.`;
+    modal.foot.append(btn("Close", () => { modal.close(); if (list.length === 1 && !failed) openChat(list[0].number); }));
+  }
+}
+$("new-msg").onclick = () => composeModal({});
+
+/* ---------- render ---------- */
+function render() { renderChats(); renderThread(); renderContacts(); renderTemplates(); renderScheduled(); }
+
+/* ---------- boot ---------- */
+if (apiKey) connect(apiKey).catch(() => { store.del("msgr_key"); apiKey = ""; });
+</script>
+</body>
+</html>

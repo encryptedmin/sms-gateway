@@ -14,6 +14,7 @@ from .views import (
     SmsLogViewSet,
     SubscriptionViewSet,
     send_sms,
+    api_messages,
     department_send_sms,
     retry_policy,
     modem_status,
@@ -71,6 +72,11 @@ urlpatterns = [
     path(
         "send-sms/",
         send_sms
+    ),
+
+    path(
+        "messages/",
+        api_messages
     ),
 
     path(

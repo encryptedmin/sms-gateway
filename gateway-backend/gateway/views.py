@@ -255,6 +255,100 @@ def send_sms(request):
     )
 
 
+@api_view(["GET"])
+@authentication_classes([])
+def api_messages(request):
+    """
+    Read-only companion to send_sms for API-key clients: the account's own
+    recent messages (with delivery status) and its plan usage, so an
+    external messaging app can show history without a staff login.
+    """
+
+    api_key = _extract_api_key(
+        request
+    )
+
+    if not api_key:
+
+        return Response(
+            {
+                "error": "api_key required"
+            },
+            status=400
+        )
+
+    key = ApiKey.objects.select_related(
+        "subscriber__user"
+    ).filter(
+        api_key=api_key,
+        enabled=True
+    ).first()
+
+    if key is None or not key.subscriber.active:
+
+        return Response(
+            {
+                "error": "invalid api key"
+            },
+            status=403
+        )
+
+    subscriber = key.subscriber
+    user = subscriber.user
+
+    subscription = Subscription.objects.select_related(
+        "plan"
+    ).filter(
+        subscriber=subscriber,
+        status="ACTIVE"
+    ).first()
+
+    account = {
+        "name": f"{user.first_name} {user.last_name}".strip() or user.username,
+        "plan": None,
+    }
+
+    if subscription:
+
+        plan = subscription.plan
+
+        account["plan"] = {
+            "name": plan.plan_name,
+            "type": plan.plan_type,
+            "limit": plan.message_limit if plan.plan_type == "LIMITED" else None,
+            "used": (
+                subscription.current_usage()
+                if plan.plan_type == "LIMITED" else None
+            ),
+        }
+
+    logs = SmsLog.objects.filter(
+        subscriber=subscriber
+    ).order_by(
+        "-id"
+    )[:200]
+
+    return Response(
+        {
+            "account": account,
+            "messages": [
+                {
+                    "id": log.id,
+                    "recipient": log.recipient,
+                    "message": log.message,
+                    "status": log.status,
+                    "created_at": log.created_at,
+                    "sent_at": log.sent_at,
+                    "error": (
+                        log.error_message if log.status == "FAILED" else ""
+                    ),
+                }
+                for log in logs
+            ],
+        }
+    )
+
+
 @api_view(["POST"])
 @permission_classes([CanSendSms])
 def department_send_sms(request):
