@@ -7,9 +7,12 @@ from .models import User
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
 
+    ordering = ("email",)
+
     list_display = (
-        "username",
         "email",
+        "first_name",
+        "last_name",
         "role",
         "is_active",
         "is_staff",
@@ -21,7 +24,23 @@ class CustomUserAdmin(UserAdmin):
         "is_staff",
     )
 
-    fieldsets = UserAdmin.fieldsets + (
+    # The email is the login; `username` mirrors it automatically.
+    fieldsets = (
+        (None, {"fields": ("email", "password")}),
+        ("Personal info", {"fields": ("first_name", "last_name")}),
+        (
+            "Permissions",
+            {
+                "fields": (
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                    "groups",
+                    "user_permissions",
+                )
+            },
+        ),
+        ("Important dates", {"fields": ("last_login", "date_joined")}),
         (
             "Additional Information",
             {
@@ -34,16 +53,21 @@ class CustomUserAdmin(UserAdmin):
         ),
     )
 
-    add_fieldsets = UserAdmin.add_fieldsets + (
+    add_fieldsets = (
         (
-            "Additional Information",
+            None,
             {
+                "classes": ("wide",),
                 "fields": (
                     "email",
+                    "first_name",
+                    "last_name",
                     "middle_name",
                     "extension_name",
                     "role",
-                )
+                    "password1",
+                    "password2",
+                ),
             },
         ),
     )

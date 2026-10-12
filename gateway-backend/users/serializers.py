@@ -5,7 +5,37 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import User
 
 
+class EmailAccountMixin:
+    """
+    Email is the account identifier. It is stored lower-cased and must be
+    unique ignoring case. `username` is never accepted as input; it mirrors
+    the email and is exposed read-only (see User.save()).
+    """
+
+    def validate_email(self, value):
+
+        email = value.strip().lower()
+
+        taken = User.objects.filter(
+            email__iexact=email
+        )
+
+        if self.instance is not None:
+            taken = taken.exclude(
+                pk=self.instance.pk
+            )
+
+        if taken.exists():
+            raise serializers.ValidationError(
+                "An account with this email already exists."
+            )
+
+        return email
+
+
 class CurrentUserSerializer(serializers.ModelSerializer):
+
+    username = serializers.ReadOnlyField()
 
     class Meta:
         model = User
@@ -23,14 +53,17 @@ class CurrentUserSerializer(serializers.ModelSerializer):
         ]
 
 
-class DepartmentAdminCreateSerializer(serializers.ModelSerializer):
+class DepartmentAdminCreateSerializer(EmailAccountMixin, serializers.ModelSerializer):
 
     password = serializers.CharField(
         write_only=True
     )
 
+    username = serializers.ReadOnlyField()
+
     class Meta:
         model = User
+        extra_kwargs = {"email": {"validators": []}}
         fields = [
             "id",
             "username",
@@ -67,14 +100,17 @@ class DepartmentAdminCreateSerializer(serializers.ModelSerializer):
         return user
 
 
-class InstructorCreateSerializer(serializers.ModelSerializer):
+class InstructorCreateSerializer(EmailAccountMixin, serializers.ModelSerializer):
 
     password = serializers.CharField(
         write_only=True
     )
 
+    username = serializers.ReadOnlyField()
+
     class Meta:
         model = User
+        extra_kwargs = {"email": {"validators": []}}
         fields = [
             "id",
             "username",
@@ -111,10 +147,13 @@ class InstructorCreateSerializer(serializers.ModelSerializer):
         return user
 
 
-class InstructorAccountSerializer(serializers.ModelSerializer):
+class InstructorAccountSerializer(EmailAccountMixin, serializers.ModelSerializer):
+
+    username = serializers.ReadOnlyField()
 
     class Meta:
         model = User
+        extra_kwargs = {"email": {"validators": []}}
         fields = [
             "id",
             "username",
@@ -133,10 +172,13 @@ class InstructorAccountSerializer(serializers.ModelSerializer):
             "is_ite_instructor",
         ]
 
-class DepartmentAdminAccountSerializer(serializers.ModelSerializer):
+class DepartmentAdminAccountSerializer(EmailAccountMixin, serializers.ModelSerializer):
+
+    username = serializers.ReadOnlyField()
 
     class Meta:
         model = User
+        extra_kwargs = {"email": {"validators": []}}
         fields = [
             "id",
             "username",

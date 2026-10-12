@@ -196,6 +196,11 @@ BROWSER_SESSION_CLOSE_GRACE_SECONDS = int(
 
 AUTH_USER_MODEL = "users.User"
 
+# Accounts sign in with their email address (case-insensitive).
+AUTHENTICATION_BACKENDS = [
+    "users.backends.EmailBackend",
+]
+
 REDIS_URL = os.getenv(
     "REDIS_URL",
     (

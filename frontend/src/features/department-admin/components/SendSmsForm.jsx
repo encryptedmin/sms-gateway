@@ -1,5 +1,16 @@
 import { useId, useMemo, useState } from "react";
 import SendEstimateModal from "../../../components/SendEstimateModal";
+import ScheduleField from "../../../components/ScheduleField";
+import {
+  nextFullHourInputValue,
+  toScheduledForISO,
+  validateSchedule,
+} from "../../../utils/schedule";
+
+const SEND_MODES = [
+  { value: "now", label: "Send now", icon: "bi-send-fill" },
+  { value: "later", label: "Schedule for later", icon: "bi-clock-history" },
+];
 
 const TARGET_TYPES = [
   { value: "contact", label: "Contacts", icon: "bi-person-fill" },
@@ -13,11 +24,14 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
   const [groupId, setGroupId] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [message, setMessage] = useState("");
+  const [sendMode, setSendMode] = useState("now");
+  const [scheduledAt, setScheduledAt] = useState("");
   const [pendingSend, setPendingSend] = useState(null);
 
   const messageId = useId();
   const contactSearchId = useId();
   const groupSelectId = useId();
+  const scheduleId = useId();
 
   const filteredContacts = useMemo(() => {
     if (!contactSearch.trim()) return contacts.slice(0, 50);
@@ -60,15 +74,28 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
     }
   }
 
-  function buildPayload() {
-    if (targetType === "contact") {
-      return { target_type: "contacts", message, contact_ids: contactIds };
+  function handleSendModeChange(mode) {
+    setSendMode(mode);
+    if (mode === "later" && !scheduledAt) {
+      setScheduledAt(nextFullHourInputValue());
     }
-    return { target_type: "class", message, group_id: groupId };
+  }
+
+  function buildPayload() {
+    const base =
+      targetType === "contact"
+        ? { target_type: "contacts", message, contact_ids: contactIds }
+        : { target_type: "class", message, group_id: groupId };
+
+    // Only send scheduled_for when scheduling; omitting it means "send now".
+    return sendMode === "later"
+      ? { ...base, scheduled_for: toScheduledForISO(scheduledAt) }
+      : base;
   }
 
   function isValid() {
     if (!message.trim()) return false;
+    if (sendMode === "later" && validateSchedule(scheduledAt) !== "") return false;
     if (targetType === "contact") return contactIds.length > 0;
     return Boolean(groupId);
   }
@@ -88,6 +115,7 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
 
     setPendingSend({
       payload: buildPayload(),
+      scheduledFor: sendMode === "later" ? toScheduledForISO(scheduledAt) : null,
       recipientCount,
       targetLabel,
     });
@@ -100,6 +128,8 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
     if (wasSent) {
       setPendingSend(null);
       setMessage("");
+      setSendMode("now");
+      setScheduledAt("");
       setTemplateId("");
       setContactIds([]);
       setContactSearch("");
@@ -237,6 +267,40 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
         </div>
       )}
 
+      <div className="mb-3">
+        <label className="form-label sg-label" id={`${scheduleId}-mode`}>When</label>
+        <div className="d-flex gap-2 flex-wrap" role="group" aria-labelledby={`${scheduleId}-mode`}>
+          {SEND_MODES.map((option) => (
+            <button
+              type="button"
+              key={option.value}
+              className="btn btn-sm"
+              onClick={() => handleSendModeChange(option.value)}
+              disabled={isSubmitting}
+              aria-pressed={sendMode === option.value}
+              style={{
+                border: `1.5px solid ${sendMode === option.value ? "var(--sg-signal-500)" : "var(--sg-surface-200)"}`,
+                background: sendMode === option.value ? "var(--sg-signal-100)" : "var(--sg-surface-0)",
+                color: sendMode === option.value ? "var(--sg-signal-600)" : "var(--sg-text-500)",
+              }}
+            >
+              <i className={`bi ${option.icon} me-1`}></i>
+              {option.label}
+            </button>
+          ))}
+        </div>
+        {sendMode === "later" && (
+          <div className="mt-3" style={{ maxWidth: 320 }}>
+            <ScheduleField
+              id={scheduleId}
+              value={scheduledAt}
+              onChange={setScheduledAt}
+              disabled={isSubmitting}
+            />
+          </div>
+        )}
+      </div>
+
       <div className="mb-1">
         <label htmlFor={messageId} className="form-label sg-label">
           Message
@@ -257,7 +321,12 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
         {isSubmitting ? (
           <>
             <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-            Sending…
+            {sendMode === "later" ? "Scheduling…" : "Sending…"}
+          </>
+        ) : sendMode === "later" ? (
+          <>
+            <i className="bi bi-clock-history me-2"></i>
+            Schedule message
           </>
         ) : (
           <>
@@ -272,6 +341,7 @@ export default function SendSmsForm({ contacts, groups, templates, onSend, isSub
       show={Boolean(pendingSend)}
       recipientCount={pendingSend?.recipientCount || 0}
       targetLabel={pendingSend?.targetLabel || ""}
+      scheduledFor={pendingSend?.scheduledFor || null}
       isSubmitting={isSubmitting}
       onConfirm={confirmSend}
       onCancel={() => setPendingSend(null)}

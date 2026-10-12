@@ -10,6 +10,8 @@ from .models import Subscriber
 
 class UserSummarySerializer(serializers.ModelSerializer):
 
+    username = serializers.ReadOnlyField()
+
     class Meta:
         model = User
         fields = [
@@ -38,10 +40,6 @@ class SubscriberSerializer(serializers.ModelSerializer):
 
 class SubscriberRegisterSerializer(serializers.Serializer):
 
-    username = serializers.CharField(
-        max_length=150
-    )
-
     password = serializers.CharField(
         write_only=True,
         min_length=8
@@ -69,31 +67,23 @@ class SubscriberRegisterSerializer(serializers.Serializer):
         default=""
     )
 
-    email = serializers.EmailField()
-
-    def validate_username(self, value):
-
-        if User.objects.filter(
-            username__iexact=value
-        ).exists():
-
-            raise serializers.ValidationError(
-                "This username is already taken."
-            )
-
-        return value
+    email = serializers.EmailField(
+        max_length=150
+    )
 
     def validate_email(self, value):
 
+        email = value.strip().lower()
+
         if User.objects.filter(
-            email__iexact=value
+            email__iexact=email
         ).exists():
 
             raise serializers.ValidationError(
                 "This email is already registered."
             )
 
-        return value
+        return email
 
     def validate_password(self, value):
 

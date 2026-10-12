@@ -10,7 +10,7 @@ from .sms_errors import classify_failure
 class ApiKeySerializer(serializers.ModelSerializer):
 
     subscriber_name = serializers.CharField(
-        source="subscriber.user.username",
+        source="subscriber.user.email",
         read_only=True
     )
 
@@ -44,7 +44,7 @@ class SmsLogSerializer(serializers.ModelSerializer):
         user = obj.subscriber.user
         full_name = f"{user.first_name} {user.last_name}".strip()
 
-        return full_name or user.username
+        return full_name or user.email
 
     def get_sent_by_name(self, obj):
 
@@ -53,7 +53,7 @@ class SmsLogSerializer(serializers.ModelSerializer):
 
         full_name = f"{obj.sent_by.first_name} {obj.sent_by.last_name}".strip()
 
-        return full_name or obj.sent_by.username
+        return full_name or obj.sent_by.email
 
     failure_category_label = serializers.SerializerMethodField()
 
@@ -193,7 +193,7 @@ class SmsRetryPolicySerializer(serializers.ModelSerializer):
 class SubscriptionSerializer(serializers.ModelSerializer):
 
     subscriber_name = serializers.CharField(
-        source="subscriber.user.username",
+        source="subscriber.user.email",
         read_only=True
     )
     plan_name = serializers.CharField(

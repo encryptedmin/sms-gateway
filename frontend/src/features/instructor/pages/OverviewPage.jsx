@@ -53,17 +53,20 @@ export default function OverviewPage() {
           </div>
         </div>
       ) : (
-        <div className="row g-3 mb-4">
-          <div className="col-sm-6 col-xl-3">
+        <div className="row g-3 mb-4 row-cols-1 row-cols-sm-2 row-cols-xl-5">
+          <div className="col">
             <StatCard label="Total Messages" value={stats?.total_messages ?? 0} icon="bi-chat-left-text-fill" accent="ink" />
           </div>
-          <div className="col-sm-6 col-xl-3">
+          <div className="col">
             <StatCard label="Sent" value={stats?.sent_messages ?? 0} icon="bi-check-circle-fill" accent="signal" />
           </div>
-          <div className="col-sm-6 col-xl-3">
+          <div className="col">
+            <StatCard label="Scheduled" value={stats?.scheduled_messages ?? 0} icon="bi-clock-history" accent="ink" />
+          </div>
+          <div className="col">
             <StatCard label="Pending" value={stats?.pending_messages ?? 0} icon="bi-hourglass-split" accent="amber" />
           </div>
-          <div className="col-sm-6 col-xl-3">
+          <div className="col">
             <StatCard label="Failed" value={stats?.failed_messages ?? 0} icon="bi-x-circle-fill" accent="danger" />
           </div>
         </div>

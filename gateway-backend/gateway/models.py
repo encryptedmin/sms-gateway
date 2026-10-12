@@ -181,7 +181,7 @@ class ApiKey(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.subscriber.user.username
+        return self.subscriber.user.email
     
 class SmsLog(models.Model):
 

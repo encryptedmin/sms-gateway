@@ -39,7 +39,7 @@ def register_subscriber(request):
 class SubscriberViewSet(ModelViewSet):
 
     queryset = Subscriber.objects.select_related("user").all().order_by(
-        "user__username"
+        "user__email"
     )
     serializer_class = SubscriberSerializer
     permission_classes = [

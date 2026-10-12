@@ -279,7 +279,7 @@ class ContactSerializer(serializers.ModelSerializer):
 class MessageTemplateSerializer(serializers.ModelSerializer):
 
     created_by_name = serializers.CharField(
-        source="created_by.username",
+        source="created_by.email",
         read_only=True
     )
 

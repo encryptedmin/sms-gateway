@@ -5,6 +5,7 @@ export default function ConfirmDialog({
   title,
   message,
   confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   isDangerous = false,
   isSubmitting = false,
   onConfirm,
@@ -44,7 +45,7 @@ export default function ConfirmDialog({
 
         <div className="d-flex justify-content-end gap-2">
           <button className="btn btn-outline-secondary btn-sm" onClick={onCancel} disabled={isSubmitting}>
-            Cancel
+            {cancelLabel}
           </button>
           <button
             className={`btn btn-sm ${isDangerous ? "btn-danger" : "sg-submit-btn"}`}

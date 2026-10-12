@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { formatScheduleTime } from "../utils/schedule";
 
 function formatDuration(totalSeconds) {
   if (totalSeconds < 60) {
@@ -24,6 +25,7 @@ export default function SendEstimateModal({
   show,
   recipientCount,
   targetLabel,
+  scheduledFor = null,
   isSubmitting,
   onConfirm,
   onCancel,
@@ -57,13 +59,14 @@ export default function SendEstimateModal({
             <i className="bi bi-send-fill"></i>
           </div>
           <div>
-            <h5 className="mb-1">Confirm SMS transmission</h5>
+            <h5 className="mb-1">{scheduledFor ? "Confirm scheduled SMS" : "Confirm SMS transmission"}</h5>
             <p className="text-muted mb-0" style={{ fontSize: "0.88rem" }}>
               {recipientCount > 0 ? (
                 <>
-                  This message will be queued for <strong>{recipientCount}</strong>{" "}
+                  This message will be {scheduledFor ? "scheduled" : "queued"} for <strong>{recipientCount}</strong>{" "}
                   active {recipientCount === 1 ? "contact" : "contacts"}.
                   {targetLabel && <> Target: <strong>{targetLabel}</strong>.</>}
+                  {scheduledFor && <> Sends <strong>{formatScheduleTime(scheduledFor)}</strong>.</>}
                 </>
               ) : (
                 "This target currently has no active contacts."
@@ -107,7 +110,7 @@ export default function SendEstimateModal({
               }}
             >
               <i className="bi bi-info-circle me-2" style={{ color: "var(--sg-signal-600)" }}></i>
-              Estimate uses approximately 4–6 seconds per contact. Actual time can vary with signal quality, modem availability, and queued messages.
+              Estimate uses approximately 4–6 seconds per contact{scheduledFor ? ", counted from the scheduled time" : ""}. Actual time can vary with signal quality, modem availability, and queued messages.
             </div>
           </>
         )}
@@ -130,12 +133,12 @@ export default function SendEstimateModal({
             {isSubmitting ? (
               <>
                 <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                Queueing…
+                {scheduledFor ? "Scheduling…" : "Queueing…"}
               </>
             ) : (
               <>
-                <i className="bi bi-send-fill me-2"></i>
-                Confirm and send
+                <i className={`bi ${scheduledFor ? "bi-clock-history" : "bi-send-fill"} me-2`}></i>
+                {scheduledFor ? "Confirm and schedule" : "Confirm and send"}
               </>
             )}
           </button>

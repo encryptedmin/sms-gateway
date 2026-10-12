@@ -15,7 +15,8 @@ export function ToastProvider({ children }) {
     (message, variant = "success") => {
       const id = ++idCounter;
       setToasts((prev) => [...prev, { id, message, variant }]);
-      setTimeout(() => dismissToast(id), 4500);
+      // Rich toasts (with a link) stay longer so there is time to click.
+      setTimeout(() => dismissToast(id), typeof message === "string" ? 4500 : 9000);
     },
     [dismissToast]
   );

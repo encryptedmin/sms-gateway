@@ -16,4 +16,4 @@ class Subscriber(models.Model):
     start_date = models.DateField()
 
     def __str__(self):
-        return self.user.username
+        return self.user.email

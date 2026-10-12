@@ -455,6 +455,14 @@ a.sg-panel:hover {
   background: var(--sg-hover);
 }
 
+/* Keeps row actions reachable when a wide table scrolls sideways. */
+.sg-table .sg-sticky-end {
+  position: sticky;
+  right: 0;
+  background: var(--sg-glass-strong);
+  box-shadow: -10px 0 14px -12px rgba(0, 0, 0, 0.25);
+}
+
 .sg-table-empty {
   padding: 2.75rem 1.25rem;
   text-align: center;
@@ -539,6 +547,12 @@ a.sg-panel:hover {
   background: var(--sg-danger-100);
   color: var(--sg-danger-500);
   border-color: var(--sg-danger-100);
+}
+
+.sg-pill--info {
+  background: var(--sg-info-100);
+  color: var(--sg-info-500);
+  border-color: var(--sg-info-100);
 }
 
 .sg-pill--neutral {

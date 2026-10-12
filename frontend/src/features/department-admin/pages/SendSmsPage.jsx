@@ -4,14 +4,13 @@ import { listContactGroups } from "../../../api/contactGroupsService";
 import { listMessageTemplates } from "../../../api/messageTemplatesService";
 import { sendDepartmentSms } from "../../../api/departmentSmsService";
 import { useToast } from "../../../context/ToastContext";
+import { extractApiError } from "../../../utils/apiErrors";
+import SendResultToast from "../../../components/SendResultToast";
 import SendSmsForm from "../components/SendSmsForm";
 import ModemStatusPanel from "../../../components/ModemStatusPanel";
 
-function extractErrorMessage(error) {
-  const data = error?.response?.data;
-  if (data?.error) return data.error;
-  return "Couldn't send this message. Check your target and try again.";
-}
+const LOGS_PATH = "/department-admin/logs";
+const SEND_ERROR_FALLBACK = "Couldn't send this message. Check your target and try again.";
 
 export default function SendSmsPage() {
   const { showToast } = useToast();
@@ -47,10 +46,10 @@ export default function SendSmsPage() {
     setIsSubmitting(true);
     try {
       const result = await sendDepartmentSms(payload);
-      showToast(`Queued ${result.contacts} message(s) for ${result.target}.`);
+      showToast(<SendResultToast result={result} logsPath={LOGS_PATH} />);
       return true;
     } catch (error) {
-      showToast(extractErrorMessage(error), "error");
+      showToast(extractApiError(error, SEND_ERROR_FALLBACK), "error");
       return false;
     } finally {
       setIsSubmitting(false);
@@ -97,7 +96,7 @@ export default function SendSmsPage() {
           Only active contacts receive messages. Inactive contacts are skipped
           automatically by the gateway.
           <hr />
-          Messages are queued immediately and processed by the gateway in the
+          Messages are queued immediately (or at the time you schedule) and processed by the gateway in the
           background — check the <strong>SMS Logs</strong> page to confirm delivery.
         </div>
       </div>

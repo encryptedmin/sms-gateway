@@ -12,6 +12,14 @@ This starts Redis, the Django backend, the Celery worker, and the frontend
 `.env` if port 80 is busy. The SQLite database lives in the `backend-data`
 volume, seeded from `gateway-backend/db.sqlite3` on first start.
 
+### Signing in (email is the username)
+
+Accounts sign in with their **email address** (case-insensitive); there is no
+separate username to create. `POST /api/token/` takes `{ "email", "password" }`.
+The seeded demo accounts (see `accounts.txt`) all use `@ite.local` emails, e.g.
+super admin `admin@ite.local` / `admin`. To create a super admin by hand:
+`python manage.py createsuperuser` (it asks for an email, first and last name).
+
 ### Department Messenger (`messenger/`)
 
 `http://127.0.0.1:8090` is a standalone SMS web app that stands in for another

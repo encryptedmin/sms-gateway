@@ -1,2 +1,14 @@
-super admin: masteradmin
-password: admin12345
+Accounts sign in with their EMAIL address (case-insensitive). There is no username.
+
+Demo accounts created by `python manage.py seed_data` (Docker runs it on start):
+
+  super admin       admin@ite.local          admin
+  department admin  deptadmin@ite.local      deptadmin12345
+  instructor        instructor1@ite.local    instructor112345
+  instructor        instructor2@ite.local    instructor212345
+  subscriber        registrar@ite.local      registrar12345
+  subscriber        library@ite.local        library12345
+  subscriber        guidance@ite.local       guidance12345
+
+Accounts created before this change keep their existing passwords; their login
+is now the email they were registered with.

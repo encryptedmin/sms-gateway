@@ -352,7 +352,7 @@ def api_messages(request):
     ).first()
 
     account = {
-        "name": f"{user.first_name} {user.last_name}".strip() or user.username,
+        "name": f"{user.first_name} {user.last_name}".strip() or user.email,
         "plan": None,
     }
 
@@ -1302,7 +1302,7 @@ def _serialize_modem_statuses():
             "registration_detail": row.registration_detail,
             "last_checked": row.last_checked,
             "last_checked_by": (
-                row.last_checked_by.username
+                row.last_checked_by.email
                 if row.last_checked_by_id else None
             ),
         }

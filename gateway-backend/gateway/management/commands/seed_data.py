@@ -43,14 +43,19 @@ PLANS = [
     },
 ]
 
-# (username, role, first, middle, last)
+EMAIL_DOMAIN = "ite.local"
+
+# Accounts sign in with their email. Demo passwords are "<name>12345"
+# (the part of the email before the @), except the admin's "admin".
+
+# (name, role, first, middle, last)  ->  name@ite.local
 STAFF = [
     ("deptadmin", "DEPARTMENT_ADMIN", "Maria", "Santos", "Reyes"),
     ("instructor1", "INSTRUCTOR", "Jose", "Dela", "Cruz"),
     ("instructor2", "INSTRUCTOR", "Ana", "Lopez", "Garcia"),
 ]
 
-# (username, first, last, plan name, messages already sent this period)
+# (name, first, last, plan name, messages already sent this period)  ->  name@ite.local
 SUBSCRIBERS = [
     ("registrar", "Registrar", "Office", "Standard", 120),
     ("library", "Library", "Services", "Basic", 35),
@@ -65,7 +70,7 @@ DEPARTMENT_CONTACTS = [
 ]
 
 CLASSES = [
-    # (owner username, group name, course, year, section, students)
+    # (owner name, group name, course, year, section, students)
     (
         "instructor1", "BSIT 3A", "BSIT", "3rd Year", "A",
         [
@@ -107,7 +112,7 @@ TEMPLATES = [
 class Command(BaseCommand):
 
     help = (
-        "Seeds a usable demo dataset (admin/admin superuser, staff, "
+        "Seeds a usable demo dataset (admin@ite.local / admin superuser, staff, "
         "subscribers, plans, contacts, templates, sample SMS logs). "
         "Safe to run repeatedly: existing rows are left alone."
     )
@@ -126,20 +131,19 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("Seed data ready."))
 
-    def make_user(self, username, password, **fields):
+    def make_user(self, name, password, **fields):
+
+        email = f"{name}@{EMAIL_DOMAIN}"
 
         user, created = User.objects.get_or_create(
-            username=username,
-            defaults={
-                "email": f"{username}@ite.local",
-                **fields,
-            },
+            email=email,
+            defaults=fields,
         )
 
         if created:
             user.set_password(password)
             user.save()
-            self.stdout.write(f"  created user {username}")
+            self.stdout.write(f"  created user {email}")
 
         return user
 
@@ -161,10 +165,10 @@ class Command(BaseCommand):
 
         staff = {}
 
-        for username, role, first, middle, last in STAFF:
-            staff[username] = self.make_user(
-                username,
-                f"{username}12345",
+        for name, role, first, middle, last in STAFF:
+            staff[name] = self.make_user(
+                name,
+                f"{name}12345",
                 first_name=first,
                 middle_name=middle,
                 last_name=last,
@@ -194,10 +198,10 @@ class Command(BaseCommand):
         subscribers = []
         today = timezone.localdate()
 
-        for username, first, last, plan_name, used in SUBSCRIBERS:
+        for name, first, last, plan_name, used in SUBSCRIBERS:
             user = self.make_user(
-                username,
-                f"{username}12345",
+                name,
+                f"{name}12345",
                 first_name=first,
                 last_name=last,
                 role="SUBSCRIBER",
