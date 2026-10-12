@@ -3,8 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>SMS Gateway</title>
     <meta name="description" content="ITE Department SMS Gateway — secure sign in" />
+    <script>
+      // Apply the saved theme before first paint so there is no light/dark flash.
+      (function () {
+        var theme = "light";
+        try {
+          var stored = localStorage.getItem("sg-theme");
+          if (stored === "light" || stored === "dark") {
+            theme = stored;
+          } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+            theme = "dark";
+          }
+        } catch (e) {
+          if (window.matchMedia("(prefers-color-scheme: dark)").matches) theme = "dark";
+        }
+        var root = document.documentElement;
+        root.setAttribute("data-bs-theme", theme);
+        root.setAttribute("data-theme", theme);
+        root.style.colorScheme = theme;
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

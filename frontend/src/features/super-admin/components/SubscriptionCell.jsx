@@ -28,7 +28,7 @@ export default function SubscriptionCell({ subscription, onEnroll, onChangePlan,
             : "Unlimited"}
         </div>
         {isLimited && subscription.messages_remaining === 0 && (
-          <div style={{ fontSize: "0.75rem", color: "var(--sg-danger-600, #c0392b)" }}>
+          <div style={{ fontSize: "0.75rem", color: "var(--sg-danger-500)" }}>
             <i className="bi bi-exclamation-circle-fill me-1"></i>
             Limit reached
           </div>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import ThemeToggle from "../../components/ThemeToggle";
 import { initials } from "../../utils/formatters";
 import "../../styles/adminLayout.css";
 
@@ -66,7 +67,7 @@ export default function SuperAdminLayout() {
               <div className="sg-sidebar-user-role">Super Admin</div>
             </div>
           </div>
-          <button className="btn btn-sm btn-outline-light w-100" onClick={logout}>
+          <button className="btn btn-sm btn-outline-secondary w-100" onClick={logout}>
             <i className="bi bi-box-arrow-right me-1"></i>
             Sign out
           </button>
@@ -81,6 +82,7 @@ export default function SuperAdminLayout() {
             </button>
             <h1 className="sg-admin-page-title">{pageTitle}</h1>
           </div>
+          <ThemeToggle />
         </header>
 
         <div className="sg-admin-content">

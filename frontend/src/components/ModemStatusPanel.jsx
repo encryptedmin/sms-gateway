@@ -9,7 +9,7 @@ const DEFAULT_REFRESH_SECONDS = 30;
 const SIGNAL_META = {
   EXCELLENT: { label: "Excellent", bars: 3, color: "var(--sg-signal-600)" },
   GOOD: { label: "Good", bars: 2, color: "var(--sg-signal-600)" },
-  WEAK: { label: "Weak", bars: 1, color: "#c9820a" },
+  WEAK: { label: "Weak", bars: 1, color: "var(--sg-amber-500)" },
   UNKNOWN: { label: "Unknown", bars: 0, color: "var(--sg-text-500)" },
 };
 
@@ -131,7 +131,7 @@ export default function ModemStatusPanel({ compact = false }) {
             <div
               key={modem.port}
               className="d-flex align-items-center justify-content-between px-3 py-2 gap-3"
-              style={{ background: "var(--sg-surface-100, #f4f6f8)", borderRadius: 8 }}
+              style={{ background: "var(--sg-surface-100)", border: "1px solid var(--sg-line)", borderRadius: 12 }}
             >
               <div className="d-flex align-items-center gap-2 min-w-0">
                 <span

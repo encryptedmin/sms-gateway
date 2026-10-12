@@ -1,3 +1,5 @@
+import { createPortal } from "react-dom";
+
 export default function ConfirmDialog({
   show,
   title,
@@ -12,7 +14,7 @@ export default function ConfirmDialog({
     return null;
   }
 
-  return (
+  return createPortal(
     <div className="sg-modal-backdrop" onClick={onCancel}>
       <div
         className="sg-modal-card"
@@ -57,6 +59,7 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

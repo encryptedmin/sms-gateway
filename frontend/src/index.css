@@ -1,42 +1,164 @@
 /* ==========================================================================
-   SMS Gateway — Design Tokens
-   Theme: network / telecom operations console
+   SMS Gateway — Design System
+   Theme: network / telecom operations console, rendered as layered glass
+   over an ambient aurora. Light + dark themes switch via [data-theme] /
+   [data-bs-theme] on <html> (see ThemeContext + the inline script in
+   index.html).
+
+   Token naming: the original --sg-* names are kept so existing components
+   (many use them inline) pick up the active theme automatically.
    ========================================================================== */
 
 :root {
-  /* Color: ink navy base + signal-teal accent (telecom broadcast feel) */
-  --sg-ink-900: #070c17;
-  --sg-ink-800: #0c1526;
-  --sg-ink-700: #121d34;
-  --sg-ink-600: #1b2a47;
-  --sg-line: rgba(232, 237, 247, 0.1);
-
-  --sg-signal-500: #14e0b4;
-  --sg-signal-600: #0fc39c;
-  --sg-signal-100: rgba(20, 224, 180, 0.12);
-
-  --sg-amber-500: #f5a524;
-
-  --sg-danger-500: #ff5d6c;
-  --sg-danger-100: rgba(255, 93, 108, 0.12);
-
-  --sg-text-100: #f5f7fb;
-  --sg-text-300: #c4cee2;
-  --sg-text-500: #8593b0;
-
-  --sg-surface-0: #ffffff;
-  --sg-surface-50: #f7f9fc;
-  --sg-surface-200: #e7ebf2;
-
   --sg-font-display: "Space Grotesk", "Segoe UI", sans-serif;
   --sg-font-body: "Inter", "Segoe UI", sans-serif;
 
-  --sg-radius-sm: 8px;
-  --sg-radius-md: 12px;
-  --sg-radius-lg: 20px;
+  --sg-radius-xs: 6px;
+  --sg-radius-sm: 10px;
+  --sg-radius-md: 16px;
+  --sg-radius-lg: 24px;
 
-  --sg-shadow-card: 0 20px 60px -25px rgba(7, 12, 23, 0.35);
+  --sg-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Brand button gradient + its label are identical in both themes. */
+  --sg-btn-from: #2be3bd;
+  --sg-btn-to: #12b894;
+  --sg-btn-ink: #03201a;
 }
+
+/* -------------------------------- Light --------------------------------- */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --sg-bg: #e9eff7;
+  --sg-aurora-1: rgba(20, 214, 176, 0.32);
+  --sg-aurora-2: rgba(99, 132, 255, 0.28);
+  --sg-aurora-3: rgba(255, 176, 120, 0.2);
+
+  /* Text */
+  --sg-text-100: #0c1424; /* primary */
+  --sg-text-300: #34425c; /* secondary */
+  --sg-text-500: #5b6a85; /* muted */
+  --sg-ink-900: #0c1424;
+  --sg-ink-800: #1a2740;
+  --sg-ink-700: #e3eaf5;
+  --sg-ink-600: #d3ddec;
+
+  /* Surfaces (glass) */
+  --sg-surface-0: rgba(255, 255, 255, 0.58);
+  --sg-surface-50: #e9eff7;
+  --sg-surface-100: rgba(12, 20, 36, 0.045);
+  --sg-surface-200: rgba(12, 20, 36, 0.1);
+  --sg-glass: rgba(255, 255, 255, 0.58);
+  --sg-glass-strong: rgba(255, 255, 255, 0.93);
+  --sg-glass-border: rgba(255, 255, 255, 0.75);
+  --sg-glass-edge: rgba(12, 20, 36, 0.07);
+  --sg-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --sg-line: rgba(12, 20, 36, 0.08);
+  --sg-hover: rgba(12, 20, 36, 0.05);
+  --sg-input-bg: rgba(255, 255, 255, 0.7);
+  --sg-input-border: rgba(12, 20, 36, 0.14);
+  --sg-backdrop: rgba(15, 24, 44, 0.3);
+
+  /* Accent (signal teal) — darker in light mode for text contrast */
+  --sg-signal-500: #0ea98a;
+  --sg-signal-600: #07755f;
+  --sg-signal-100: rgba(14, 169, 138, 0.14);
+  --sg-signal-glow: rgba(14, 169, 138, 0.35);
+
+  --sg-amber-500: #a85f00;
+  --sg-amber-100: rgba(245, 158, 11, 0.17);
+  --sg-info-500: #2a62b8;
+  --sg-info-100: rgba(59, 130, 246, 0.14);
+  --sg-danger-500: #d42c44;
+  --sg-danger-600: #b01f36;
+  --sg-danger-100: rgba(225, 45, 70, 0.12);
+
+  --sg-shadow-card: 0 1px 2px rgba(15, 24, 44, 0.04), 0 12px 32px -12px rgba(30, 45, 80, 0.22);
+  --sg-shadow-lg: 0 30px 80px -24px rgba(25, 40, 80, 0.38);
+
+  --bs-success-rgb: 14, 169, 138;
+  --bs-danger-rgb: 212, 44, 68;
+}
+
+/* --------------------------------- Dark --------------------------------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --sg-bg: #060b16;
+  --sg-aurora-1: rgba(20, 224, 180, 0.2);
+  --sg-aurora-2: rgba(92, 110, 255, 0.24);
+  --sg-aurora-3: rgba(180, 80, 255, 0.12);
+
+  --sg-text-100: #f1f5fc;
+  --sg-text-300: #c3cde2;
+  --sg-text-500: #8c9ab6;
+  --sg-ink-900: #f1f5fc;
+  --sg-ink-800: #dbe3f2;
+  --sg-ink-700: #16223a;
+  --sg-ink-600: #1f2e4c;
+
+  --sg-surface-0: rgba(20, 30, 54, 0.55);
+  --sg-surface-50: #060b16;
+  --sg-surface-100: rgba(255, 255, 255, 0.045);
+  --sg-surface-200: rgba(255, 255, 255, 0.1);
+  --sg-glass: rgba(20, 30, 54, 0.55);
+  --sg-glass-strong: rgba(14, 22, 42, 0.86);
+  --sg-glass-border: rgba(255, 255, 255, 0.1);
+  --sg-glass-edge: rgba(255, 255, 255, 0.05);
+  --sg-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --sg-line: rgba(255, 255, 255, 0.08);
+  --sg-hover: rgba(255, 255, 255, 0.06);
+  --sg-input-bg: rgba(255, 255, 255, 0.05);
+  --sg-input-border: rgba(255, 255, 255, 0.14);
+  --sg-backdrop: rgba(2, 5, 12, 0.62);
+
+  --sg-signal-500: #2ee6c0;
+  --sg-signal-600: #3ff0cb;
+  --sg-signal-100: rgba(46, 230, 192, 0.14);
+  --sg-signal-glow: rgba(46, 230, 192, 0.4);
+
+  --sg-amber-500: #ffb84d;
+  --sg-amber-100: rgba(255, 184, 77, 0.15);
+  --sg-info-500: #7db4ff;
+  --sg-info-100: rgba(125, 180, 255, 0.15);
+  --sg-danger-500: #ff6b7d;
+  --sg-danger-600: #ff8795;
+  --sg-danger-100: rgba(255, 107, 125, 0.15);
+
+  --sg-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 16px 40px -16px rgba(0, 0, 0, 0.6);
+  --sg-shadow-lg: 0 30px 80px -20px rgba(0, 0, 0, 0.75);
+
+  --bs-success-rgb: 46, 230, 192;
+  --bs-danger-rgb: 255, 107, 125;
+}
+
+/* Bootstrap 5.3 reads these; pointing them at our tokens themes every
+   stock component (modals, tables, .text-muted, .alert, forms…) at once. */
+:root[data-bs-theme] {
+  --bs-body-font-family: var(--sg-font-body);
+  --bs-body-color: var(--sg-text-100);
+  --bs-body-color-rgb: 12, 20, 36;
+  --bs-body-bg: transparent;
+  --bs-emphasis-color: var(--sg-text-100);
+  --bs-secondary-color: var(--sg-text-500);
+  --bs-tertiary-color: var(--sg-text-500);
+  --bs-border-color: var(--sg-surface-200);
+  --bs-border-color-translucent: var(--sg-surface-200);
+  --bs-link-color: var(--sg-signal-600);
+  --bs-link-hover-color: var(--sg-signal-500);
+  --bs-border-radius: var(--sg-radius-sm);
+  --bs-focus-ring-color: var(--sg-signal-100);
+}
+
+:root[data-theme="dark"][data-bs-theme] {
+  --bs-body-color-rgb: 241, 245, 252;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Base                                                                    */
+/* ---------------------------------------------------------------------- */
 
 * {
   box-sizing: border-box;
@@ -45,15 +167,37 @@
 html,
 body,
 #root {
+  min-height: 100%;
+}
+
+html,
+body {
   height: 100%;
 }
 
 body {
   margin: 0;
   font-family: var(--sg-font-body);
+  font-size: 0.95rem;
   color: var(--sg-text-100);
-  background-color: var(--sg-surface-50);
+  background-color: var(--sg-bg);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Ambient aurora: gives the glass something to refract. Fixed so it never
+   scrolls with content. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60vmax 60vmax at 8% 0%, var(--sg-aurora-1), transparent 60%),
+    radial-gradient(55vmax 55vmax at 100% 12%, var(--sg-aurora-2), transparent 60%),
+    radial-gradient(50vmax 50vmax at 60% 108%, var(--sg-aurora-3), transparent 60%);
 }
 
 h1,
@@ -63,56 +207,290 @@ h4,
 h5,
 h6 {
   font-family: var(--sg-font-display);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   margin: 0;
+  color: var(--sg-text-100);
 }
 
 a {
   color: inherit;
 }
 
-button:focus-visible,
-a:focus-visible,
-input:focus-visible {
+::selection {
+  background: var(--sg-signal-100);
+  color: var(--sg-text-100);
+}
+
+:focus-visible {
   outline: 2px solid var(--sg-signal-500);
   outline-offset: 2px;
 }
 
-/* Shared "signal" primary button, reused across the login form and any
-   in-app call-to-action that wants the brand accent. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--sg-signal-500);
+}
+
+/* Slim themed scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sg-surface-200) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--sg-surface-200);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--sg-text-500);
+  background-clip: content-box;
+  border: 3px solid transparent;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Glass primitive                                                         */
+/* ---------------------------------------------------------------------- */
+
+.sg-glass {
+  background: var(--sg-glass);
+  border: 1px solid var(--sg-glass-border);
+  box-shadow: var(--sg-shadow-card), var(--sg-glass-highlight);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root,
+  :root[data-theme] {
+    --sg-glass: var(--sg-glass-strong);
+    --sg-surface-0: var(--sg-glass-strong);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Buttons                                                                 */
+/* ---------------------------------------------------------------------- */
+
+.btn {
+  --bs-btn-border-radius: var(--sg-radius-sm);
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease,
+    transform 0.18s var(--sg-ease), box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+}
+
+/* Primary "signal" action */
 .sg-submit-btn {
-  background: linear-gradient(135deg, var(--sg-signal-500), var(--sg-signal-600));
-  color: var(--sg-ink-900);
+  background: linear-gradient(135deg, var(--sg-btn-from), var(--sg-btn-to));
+  color: var(--sg-btn-ink);
   font-weight: 700;
   font-size: 0.95rem;
-  padding: 0.7rem 1rem;
-  border: none;
+  padding: 0.68rem 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: var(--sg-radius-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  transition: filter 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 8px 22px -10px var(--sg-signal-glow), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.sg-submit-btn.btn-sm {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.84rem;
 }
 
 .sg-submit-btn:hover:not(:disabled) {
-  filter: brightness(1.05);
+  filter: brightness(1.06) saturate(1.05);
   transform: translateY(-1px);
-  color: var(--sg-ink-900);
+  color: var(--sg-btn-ink);
+  box-shadow: 0 12px 28px -10px var(--sg-signal-glow), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.sg-submit-btn:active:not(:disabled) {
+  color: var(--sg-btn-ink);
+  background: linear-gradient(135deg, var(--sg-btn-from), var(--sg-btn-to));
 }
 
 .sg-submit-btn:disabled {
-  opacity: 0.75;
+  opacity: 0.6;
+  box-shadow: none;
 }
+
+/* Secondary: quiet glass button */
+.btn-outline-secondary {
+  --bs-btn-color: var(--sg-text-300);
+  --bs-btn-border-color: var(--sg-input-border);
+  --bs-btn-bg: var(--sg-input-bg);
+  --bs-btn-hover-color: var(--sg-text-100);
+  --bs-btn-hover-bg: var(--sg-hover);
+  --bs-btn-hover-border-color: var(--sg-text-500);
+  --bs-btn-active-color: var(--sg-text-100);
+  --bs-btn-active-bg: var(--sg-hover);
+  --bs-btn-active-border-color: var(--sg-text-500);
+  --bs-btn-disabled-color: var(--sg-text-500);
+  --bs-btn-disabled-border-color: var(--sg-surface-200);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.btn-danger {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: var(--sg-danger-600);
+  --bs-btn-border-color: transparent;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--sg-danger-500);
+  --bs-btn-hover-border-color: transparent;
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--sg-danger-500);
+  --bs-btn-active-border-color: transparent;
+  --bs-btn-disabled-color: #fff;
+  --bs-btn-disabled-bg: var(--sg-danger-600);
+  box-shadow: 0 8px 20px -10px var(--sg-danger-500);
+}
+
+:root[data-theme="dark"] .btn-danger {
+  --bs-btn-bg: #e0455a;
+  --bs-btn-hover-bg: #f0586d;
+  --bs-btn-active-bg: #f0586d;
+  --bs-btn-disabled-bg: #e0455a;
+}
+
+.btn-outline-danger {
+  --bs-btn-color: var(--sg-danger-500);
+  --bs-btn-border-color: var(--sg-danger-500);
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: var(--sg-danger-600);
+  --bs-btn-hover-border-color: var(--sg-danger-600);
+  --bs-btn-active-color: #fff;
+  --bs-btn-active-bg: var(--sg-danger-600);
+  --bs-btn-active-border-color: var(--sg-danger-600);
+  --bs-btn-disabled-color: var(--sg-danger-500);
+  --bs-btn-disabled-border-color: var(--sg-danger-500);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Forms                                                                   */
+/* ---------------------------------------------------------------------- */
+
+.form-label,
+.sg-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--sg-text-300);
+  margin-bottom: 0.4rem;
+}
+
+.form-control,
+.form-select,
+.input-group-text {
+  background-color: var(--sg-input-bg);
+  border: 1px solid var(--sg-input-border);
+  color: var(--sg-text-100);
+  border-radius: var(--sg-radius-sm);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.form-control::placeholder {
+  color: var(--sg-text-500);
+  opacity: 0.8;
+}
+
+.form-control:hover:not(:disabled):not(:focus),
+.form-select:hover:not(:disabled):not(:focus) {
+  border-color: var(--sg-text-500);
+}
+
+.form-control:focus,
+.form-select:focus {
+  background-color: var(--sg-input-bg);
+  color: var(--sg-text-100);
+  border-color: var(--sg-signal-500);
+  box-shadow: 0 0 0 4px var(--sg-signal-100);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  background-color: var(--sg-surface-100);
+  opacity: 0.7;
+}
+
+.form-text {
+  color: var(--sg-text-500);
+}
+
+.form-check-input {
+  background-color: var(--sg-input-bg);
+  border-color: var(--sg-input-border);
+}
+
+.form-check-input:checked {
+  background-color: var(--sg-signal-500);
+  border-color: var(--sg-signal-500);
+}
+
+.form-check-input:focus {
+  border-color: var(--sg-signal-500);
+  box-shadow: 0 0 0 4px var(--sg-signal-100);
+}
+
+/* Padded switch cards: Bootstrap's p-3 utility wipes the gutter the switch
+   hangs in, which pushed the toggle outside its box. */
+.form-check.form-switch.p-3 {
+  padding-left: calc(1rem + 2.5em) !important;
+}
+
+.input-group > .form-control:focus {
+  z-index: 3;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--sg-text-100);
+  box-shadow: 0 0 0 1000px var(--sg-glass-strong) inset;
+  transition: background-color 9999s ease-out;
+}
+
+.sg-switch {
+  cursor: pointer;
+  width: 2.4em;
+  height: 1.3em;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Feedback: alerts, spinners, toasts, modals                              */
+/* ---------------------------------------------------------------------- */
 
 .alert-banner {
   background: var(--sg-danger-100);
-  border: 1px solid rgba(255, 93, 108, 0.35);
-  color: #b3283a;
+  border: 1px solid var(--sg-danger-500);
+  color: var(--sg-danger-600);
   border-radius: var(--sg-radius-sm);
   padding: 0.7rem 0.85rem;
   font-size: 0.85rem;
   margin-bottom: 1.25rem;
+}
+
+:root[data-theme="dark"] .alert-banner {
+  color: var(--sg-danger-500);
+}
+
+.alert {
+  border-radius: var(--sg-radius-sm);
 }
 
 .btn-close-inline {
@@ -124,37 +502,64 @@ input:focus-visible {
   padding: 0.1rem;
 }
 
-/* Shared lightweight modal (ConfirmDialog, PlanFormModal, etc.) */
+/* Modal: dimmed + blurred scrim, frosted dialog */
 .sg-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(7, 12, 23, 0.55);
-  backdrop-filter: blur(2px);
+  background: var(--sg-backdrop);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  backdrop-filter: blur(8px) saturate(120%);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1500;
   padding: 1rem;
+  animation: sg-fade-in 0.18s ease-out;
 }
 
 .sg-modal-card {
-  background: var(--sg-surface-0);
-  border-radius: var(--sg-radius-md);
-  box-shadow: var(--sg-shadow-card);
+  background: var(--sg-glass-strong);
+  border: 1px solid var(--sg-glass-border);
+  border-radius: var(--sg-radius-lg);
+  box-shadow: var(--sg-shadow-lg), var(--sg-glass-highlight);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
   width: 100%;
   max-width: 480px;
-  padding: 1.5rem;
-  animation: sg-modal-in 0.18s ease-out;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: 1.6rem;
+  animation: sg-modal-in 0.28s var(--sg-ease);
 }
 
 @keyframes sg-modal-in {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.98);
+    transform: translateY(14px) scale(0.97);
   }
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sg-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sg-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -167,26 +572,35 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  max-width: min(360px, calc(100vw - 2rem));
+  max-width: min(380px, calc(100vw - 2rem));
 }
 
 .sg-toast {
   display: flex;
   align-items: flex-start;
-  gap: 0.6rem;
-  padding: 0.75rem 1rem;
-  border-radius: var(--sg-radius-sm);
+  gap: 0.65rem;
+  padding: 0.8rem 1rem;
+  border-radius: var(--sg-radius-md);
   font-size: 0.88rem;
   font-weight: 500;
   color: var(--sg-text-100);
-  box-shadow: var(--sg-shadow-card);
+  background: var(--sg-glass-strong);
+  border: 1px solid var(--sg-glass-border);
+  border-left-width: 4px;
+  box-shadow: var(--sg-shadow-lg), var(--sg-glass-highlight);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  backdrop-filter: blur(20px) saturate(170%);
   cursor: pointer;
-  animation: sg-toast-in 0.2s ease-out;
+  animation: sg-toast-in 0.32s var(--sg-ease);
+}
+
+.sg-toast i {
+  font-size: 1.05rem;
+  margin-top: 0.05rem;
 }
 
 .sg-toast-success {
-  background: var(--sg-ink-800);
-  border: 1px solid var(--sg-signal-600);
+  border-left-color: var(--sg-signal-500);
 }
 
 .sg-toast-success i {
@@ -194,8 +608,7 @@ input:focus-visible {
 }
 
 .sg-toast-error {
-  background: var(--sg-ink-800);
-  border: 1px solid var(--sg-danger-500);
+  border-left-color: var(--sg-danger-500);
 }
 
 .sg-toast-error i {
@@ -205,12 +618,96 @@ input:focus-visible {
 @keyframes sg-toast-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateX(24px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0) scale(1);
   }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Theme switch (light / system / dark)                                    */
+/* ---------------------------------------------------------------------- */
+
+.sg-theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--sg-glass);
+  border: 1px solid var(--sg-glass-border);
+  box-shadow: var(--sg-glass-highlight);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+}
+
+.sg-theme-switch button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--sg-text-500);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s var(--sg-ease),
+    box-shadow 0.2s ease;
+}
+
+.sg-theme-switch button:hover {
+  color: var(--sg-text-100);
+}
+
+.sg-theme-switch button.is-active {
+  background: linear-gradient(135deg, var(--sg-btn-from), var(--sg-btn-to));
+  color: var(--sg-btn-ink);
+  box-shadow: 0 4px 12px -4px var(--sg-signal-glow);
+}
+
+/* Pinned to the corner on pages without an app shell (login, 404, …) */
+.sg-theme-floating {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1200;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Standalone message pages (404 / unauthorized)                           */
+/* ---------------------------------------------------------------------- */
+
+.sg-state-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.sg-state-card {
+  max-width: 480px;
+  width: 100%;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  border-radius: var(--sg-radius-lg);
+  animation: sg-fade-up 0.5s var(--sg-ease);
+}
+
+.sg-state-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 1.25rem;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

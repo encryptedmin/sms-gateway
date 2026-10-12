@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { getHomeRouteForRole } from "../../utils/roles";
+import ThemeToggle from "../../components/ThemeToggle";
 import BrandPanel from "./components/BrandPanel";
 import LoginForm from "./components/LoginForm";
 import "./LoginPage.css";
@@ -58,11 +59,12 @@ export default function LoginPage() {
 
   return (
     <div className="sg-login-page">
+      <ThemeToggle className="sg-theme-floating" />
       <div className="sg-login-shell">
         <BrandPanel />
 
         <div className="sg-form-panel d-flex align-items-center justify-content-center">
-          <div className="sg-form-card">
+          <div className="sg-form-card sg-glass">
             <div className="sg-form-card-header d-lg-none">
               <i className="bi bi-broadcast-pin"></i>
               <span>SMS Gateway</span>

@@ -1,3 +1,5 @@
+import { createPortal } from "react-dom";
+
 function formatDuration(totalSeconds) {
   if (totalSeconds < 60) {
     return `~${totalSeconds} second${totalSeconds === 1 ? "" : "s"}`;
@@ -30,11 +32,11 @@ export default function SendEstimateModal({
 
   const estimates = [
     { label: "Best case", seconds: recipientCount * 4, color: "var(--sg-signal-600)", icon: "bi-lightning-fill" },
-    { label: "Average", seconds: recipientCount * 5, color: "#3977a8", icon: "bi-clock-fill" },
-    { label: "Worst case", seconds: recipientCount * 6, color: "#c9820a", icon: "bi-hourglass-split" },
+    { label: "Average", seconds: recipientCount * 5, color: "var(--sg-info-500)", icon: "bi-clock-fill" },
+    { label: "Worst case", seconds: recipientCount * 6, color: "var(--sg-amber-500)", icon: "bi-hourglass-split" },
   ];
 
-  return (
+  return createPortal(
     <div className="sg-modal-backdrop" onClick={isSubmitting ? undefined : onCancel}>
       <div
         className="sg-modal-card"
@@ -139,6 +141,7 @@ export default function SendEstimateModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
