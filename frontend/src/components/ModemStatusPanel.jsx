@@ -10,7 +10,7 @@ const SIGNAL_META = {
   EXCELLENT: { label: "Excellent", bars: 3, color: "var(--sg-signal-600)" },
   GOOD: { label: "Good", bars: 2, color: "var(--sg-signal-600)" },
   WEAK: { label: "Weak", bars: 1, color: "var(--sg-amber-500)" },
-  UNKNOWN: { label: "Unknown", bars: 0, color: "var(--sg-text-500)" },
+  UNKNOWN: { label: "Unavailable", bars: 0, color: "var(--sg-text-500)" },
 };
 
 function SignalBars({ bucket }) {
@@ -44,6 +44,9 @@ export default function ModemStatusPanel({ compact = false }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const errorShownRef = useRef(false);
+  const availableModems = (data?.modems || []).filter(
+    (modem) => modem.verified_sim800c && modem.online
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -97,10 +100,10 @@ export default function ModemStatusPanel({ compact = false }) {
       <div className="d-flex align-items-center justify-content-between mb-3 gap-3">
         <div>
           <div className="sg-panel-title mb-0">
-            {compact ? "Signal Strength" : "Modem Status"}
+            {compact ? "SIM800C Signal" : "SIM800C Status"}
           </div>
           <div className="sg-panel-subtitle">
-            Safe AT+CSQ refresh every {data?.refresh_interval_seconds || DEFAULT_REFRESH_SECONDS} seconds.
+            Shows verified, connected modules. Refreshes every {data?.refresh_interval_seconds || DEFAULT_REFRESH_SECONDS} seconds.
           </div>
         </div>
         <span
@@ -121,13 +124,13 @@ export default function ModemStatusPanel({ compact = false }) {
             <span className="visually-hidden">Loading…</span>
           </div>
         </div>
-      ) : !data?.modems?.length ? (
+      ) : !availableModems.length ? (
         <div className="sg-table-empty">
-          No configured modem ports are available for signal monitoring.
+          No active SIM800C modules detected.
         </div>
       ) : (
         <div className="d-flex flex-column gap-2">
-          {data.modems.map((modem) => (
+          {availableModems.map((modem) => (
             <div
               key={modem.port}
               className="d-flex align-items-center justify-content-between px-3 py-2 gap-3"
@@ -140,7 +143,7 @@ export default function ModemStatusPanel({ compact = false }) {
                     height: 8,
                     borderRadius: "50%",
                     flex: "0 0 auto",
-                    background: modem.online ? "var(--sg-signal-600)" : "var(--sg-text-500)",
+                    background: "var(--sg-signal-600)",
                   }}
                 />
                 <div>
@@ -152,7 +155,7 @@ export default function ModemStatusPanel({ compact = false }) {
                     style={{ fontSize: "0.72rem" }}
                     title={modem.registration_detail || ""}
                   >
-                    {modem.online ? "Responding" : "No response"}
+                    Connected
                     {modem.last_checked && ` · ${formatDateTime(modem.last_checked)}`}
                   </div>
                 </div>
@@ -160,7 +163,7 @@ export default function ModemStatusPanel({ compact = false }) {
               <div className="d-flex align-items-center gap-2 text-nowrap">
                 <SignalBars bucket={modem.signal_bucket} />
                 <span className="sg-cell-muted" style={{ fontSize: "0.76rem", minWidth: 58, textAlign: "right" }}>
-                  {SIGNAL_META[modem.signal_bucket]?.label || "Unknown"}
+                  {SIGNAL_META[modem.signal_bucket]?.label || "Unavailable"}
                   {modem.signal_csq !== null && modem.signal_csq !== undefined && (
                     <small className="d-block">CSQ {modem.signal_csq}/31</small>
                   )}

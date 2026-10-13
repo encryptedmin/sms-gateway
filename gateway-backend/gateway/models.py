@@ -365,8 +365,9 @@ class SmsRetryPolicy(models.Model):
 
 class ModemStatus(models.Model):
     """
-    Last-known status for one configured modem port. The automatic AT+CSQ
-    refresh writes this cache; GET /api/modem-status/ only reads it.
+    Last-known status for one serial port. Automatic discovery first verifies
+    that the device identifies as a SIM800C, then records its AT+CSQ result.
+    GET /api/modem-status/ only exposes verified, currently responsive modules.
     """
 
     SIGNAL_BUCKET = [
@@ -383,6 +384,14 @@ class ModemStatus(models.Model):
 
     is_online = models.BooleanField(
         default=False
+    )
+
+    is_verified_sim800c = models.BooleanField(
+        default=False,
+        help_text=(
+            "Whether the device positively identified as a SIM800C during "
+            "the most recent hardware discovery scan."
+        )
     )
 
     # Kept as is_online for API/database compatibility. Under automatic

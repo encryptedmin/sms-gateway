@@ -28,12 +28,11 @@ class Sim800Service:
     # full RESPONSE_TIMEOUT before the scan can move on.
     DISCOVERY_PROBE_TIMEOUT = 3
 
-    # What a SIM800/SIM800C/SIM800L's ATI or AT+CGMM response looks
-    # like, used to positively confirm "this port is actually a SIM800
-    # modem" rather than assuming any device that answers AT is one.
+    # What a SIM800C's ATI or AT+CGMM response looks like. Do not accept a
+    # generic "SIMCOM" manufacturer response: other SIMCom modem families use
+    # the same manufacturer string, and this application targets SIM800C.
     IDENTITY_MARKERS = (
-        "SIM800",
-        "SIMCOM",
+        "SIM800C",
     )
 
     # Per-port locks, keyed by port name (e.g. "COM3"). Guarding the dict
@@ -77,7 +76,8 @@ class Sim800Service:
 
         known = list(
             ModemStatus.objects.filter(
-                is_online=True
+                is_online=True,
+                is_verified_sim800c=True,
             ).order_by(
                 "port"
             ).values_list(
@@ -830,35 +830,6 @@ class Sim800Service:
 
                 ser.close()
 
-    def signal_check_ports(self):
-        """
-        Return configured, previously-known, and currently enumerated serial
-        ports. Including newly enumerated ports lets a SIM800 appear after it
-        is plugged in or assigned a different COM number without requiring a
-        settings change. The caller still issues only the single harmless
-        AT+CSQ query; devices that do not answer remain marked unknown and are
-        excluded from SMS dispatch by _get_preferred_ports.
-        """
-
-        from .models import ModemStatus
-
-        known_ports = list(
-            ModemStatus.objects.order_by(
-                "port"
-            ).values_list(
-                "port",
-                flat=True
-            )
-        )
-
-        return list(
-            dict.fromkeys(
-                known_ports +
-                self._configured_ports_from_settings() +
-                self._available_ports()
-            )
-        )
-
     def check_signal(self, port):
         """
         Read the SIM800's cached radio signal value with AT+CSQ only.
@@ -943,7 +914,7 @@ class Sim800Service:
     def probe_port_identity(self, port):
         """
         Briefly connects to `port` and asks it to identify itself,
-        checking whether the response looks like a SIM800/SIMCOM
+        checking whether the response looks like a SIM800C
         module. Deliberately fast and forgiving of failure — this may
         be run against ports that aren't a modem at all (mice,
         printers, Bluetooth dongles, other USB-serial devices), so a
@@ -951,7 +922,7 @@ class Sim800Service:
         whole-system scan.
 
         Returns True/False. Never raises — any failure just means
-        "not a SIM800 on this port", not an error worth surfacing.
+        "not a SIM800C on this port", not an error worth surfacing.
         """
 
         ser = None
@@ -1022,12 +993,10 @@ class Sim800Service:
 
     def discover_all_modem_ports(self):
         """
-        Legacy explicit discovery helper. Scans every serial port currently
-        connected to this machine — not a preconfigured list — and returns the ones that
-        positively identify as a SIM800/SIMCOM modem, regardless of
-        which physical USB port or COM number it enumerated as. This
-        It is intentionally not used by automatic signal monitoring, which
-        sends only AT+CSQ to configured or already-known modem ports.
+        Scan every currently connected serial port rather than a configured
+        list. Only devices that positively identify as SIM800C are returned,
+        regardless of their physical USB port or COM number. Automatic signal
+        monitoring runs this discovery before any AT+CSQ query.
         """
 
         if settings.SMS_DEV_MODE:

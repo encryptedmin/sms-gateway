@@ -242,37 +242,18 @@ class GatewayApiTests(TestCase):
         self.assertEqual(result["signal_csq"], 18)
         serial_connection.close.assert_called_once_with()
 
-    def test_signal_check_includes_newly_enumerated_serial_ports(self):
+    def test_identity_check_accepts_only_sim800c(self):
         from .services import Sim800Service
 
-        ModemStatus.objects.create(
-            port="COM6",
-            is_online=True,
-        )
         service = Sim800Service()
 
-        with patch.object(
-            service,
-            "_configured_ports_from_settings",
-            return_value=["COM3", "COM4"],
-        ), patch.object(
-            service,
-            "_available_ports",
-            return_value=["COM3", "COM4", "COM6", "COM7"],
-        ):
-            ports = service.signal_check_ports()
+        self.assertTrue(service._looks_like_sim800("SIMCOM_SIM800C\r\nOK"))
+        self.assertTrue(service._looks_like_sim800("Model: SIM800C-DS"))
+        self.assertFalse(service._looks_like_sim800("SIMCOM_Ltd\r\nOK"))
+        self.assertFalse(service._looks_like_sim800("SIM800L\r\nOK"))
+        self.assertFalse(service._looks_like_sim800("Quectel EC25\r\nOK"))
 
-        self.assertEqual(
-            ports,
-            [
-                "COM6",
-                "COM3",
-                "COM4",
-                "COM7",
-            ],
-        )
-
-    def test_sms_dispatch_uses_only_responsive_cached_modems(self):
+    def test_sms_dispatch_uses_only_verified_responsive_cached_modems(self):
         from .services import Sim800Service
 
         ModemStatus.objects.create(
@@ -282,10 +263,17 @@ class GatewayApiTests(TestCase):
         ModemStatus.objects.create(
             port="COM6",
             is_online=True,
+            is_verified_sim800c=True,
         )
         ModemStatus.objects.create(
             port="COM7",
             is_online=True,
+            is_verified_sim800c=True,
+        )
+        ModemStatus.objects.create(
+            port="COM8",
+            is_online=True,
+            is_verified_sim800c=False,
         )
 
         service = Sim800Service()
@@ -446,11 +434,31 @@ class InstructorSmsIsolationTests(TestCase):
         self.assertTrue(SmsLog.objects.filter(id=own_pending.id).exists())
         self.assertTrue(SmsLog.objects.filter(id=self.other_log.id).exists())
 
-    def test_instructor_can_view_the_modem_signal_indicator(self):
+    def test_instructor_can_view_only_active_verified_sim800c_modules(self):
+        ModemStatus.objects.create(
+            port="COM3",
+            is_online=True,
+            is_verified_sim800c=True,
+        )
+        ModemStatus.objects.create(
+            port="COM4",
+            is_online=True,
+            is_verified_sim800c=False,
+        )
+        ModemStatus.objects.create(
+            port="COM5",
+            is_online=False,
+            is_verified_sim800c=True,
+        )
+
         response = self.client.get("/api/modem-status/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("modems", response.data)
+        self.assertEqual(
+            [modem["port"] for modem in response.data["modems"]],
+            ["COM3"],
+        )
+        self.assertTrue(response.data["modems"][0]["verified_sim800c"])
 
     @patch("gateway.views.process_sms.delay")
     def test_instructor_can_send_to_multiple_selected_contacts(self, delay):
@@ -547,15 +555,20 @@ class InstructorSmsIsolationTests(TestCase):
 
     @patch("gateway.views._redis_client")
     @patch("gateway.views.Sim800Service")
-    def test_automatic_signal_refresh_uses_signal_only_probe(
+    def test_automatic_signal_refresh_discovers_only_verified_sim800c(
         self,
         service_class,
         redis_client,
     ):
+        stale_modem = ModemStatus.objects.create(
+            port="COM9",
+            is_online=True,
+            is_verified_sim800c=True,
+        )
         redis_client.return_value.ttl.return_value = 0
         redis_client.return_value.set.return_value = True
         service = service_class.return_value
-        service.signal_check_ports.return_value = ["COM3"]
+        service.discover_all_modem_ports.return_value = ["COM3"]
         service.check_signal.return_value = {
             "responsive": True,
             "signal_csq": 21,
@@ -568,12 +581,19 @@ class InstructorSmsIsolationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["refresh_interval_seconds"], 30)
         self.assertEqual(response.data["modems"][0]["signal_csq"], 21)
-        service.signal_check_ports.assert_called_once_with()
+        self.assertTrue(response.data["modems"][0]["verified_sim800c"])
+        self.assertEqual(
+            [modem["port"] for modem in response.data["modems"]],
+            ["COM3"],
+        )
+        service.discover_all_modem_ports.assert_called_once_with()
         service.check_signal.assert_called_once_with("COM3")
-        service.discover_all_modem_ports.assert_not_called()
         modem = ModemStatus.objects.get(port="COM3")
         self.assertTrue(modem.is_online)
+        self.assertTrue(modem.is_verified_sim800c)
         self.assertEqual(modem.signal_bucket, "EXCELLENT")
+        stale_modem.refresh_from_db()
+        self.assertFalse(stale_modem.is_online)
 
 
 class ScheduledSmsTests(TestCase):

@@ -1290,12 +1290,16 @@ MODEM_STATUS_COOLDOWN_KEY = "modem_status:cooldown"
 
 def _serialize_modem_statuses():
 
-    rows = ModemStatus.objects.all().order_by("port")
+    rows = ModemStatus.objects.filter(
+        is_online=True,
+        is_verified_sim800c=True,
+    ).order_by("port")
 
     return [
         {
             "port": row.port,
             "online": row.is_online,
+            "verified_sim800c": row.is_verified_sim800c,
             "signal_bucket": row.signal_bucket,
             "signal_csq": row.signal_csq,
             "registration_state": row.registration_state,
@@ -1331,11 +1335,10 @@ def modem_status(request):
 @permission_classes([CanSendSms])
 def modem_status_check(request):
     """
-    Automatic, read-only signal refresh. It issues AT+CSQ against configured,
-    previously-known, and newly enumerated serial ports, then stores the
-    result for every dashboard. The cooldown prevents several open tabs from
-    querying the same modem at once; the port lock prevents collision with an
-    SMS send.
+    Automatic hardware discovery and signal refresh. It first asks every
+    currently enumerated serial device to identify itself, then issues AT+CSQ
+    only to verified SIM800C modules. The cooldown prevents several open tabs
+    from scanning at once; the port lock prevents collision with an SMS send.
     """
 
     client = _redis_client()
@@ -1381,12 +1384,15 @@ def modem_status_check(request):
         )
 
     probe = Sim800Service()
-    signal_ports = probe.signal_check_ports()
 
-    # Do not run identity/setup commands against serial devices here. Every
-    # enumerated port receives only one read-only AT+CSQ query; ports that do
-    # not understand it are retained as unknown and never used for sending.
-    for port in signal_ports:
+    # Anything not rediscovered during this scan is unplugged, inactive, or no
+    # longer identifying as a SIM800C. Keep its history but hide it from the
+    # shared status response by marking it offline before discovery.
+    ModemStatus.objects.filter(is_online=True).update(is_online=False)
+
+    verified_ports = probe.discover_all_modem_ports()
+
+    for port in verified_ports:
 
         result = probe.check_signal(port)
         signal_csq = result["signal_csq"]
@@ -1406,6 +1412,7 @@ def modem_status_check(request):
             port=port,
             defaults={
                 "is_online": responsive,
+                "is_verified_sim800c": True,
                 "signal_csq": signal_csq,
                 "signal_bucket": ModemStatus.bucket_for_csq(signal_csq),
                 "registration_state": (

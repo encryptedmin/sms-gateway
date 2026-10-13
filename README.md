@@ -228,6 +228,26 @@ Use this when you want to edit code with hot reload, or to use the modems from
 Windows. You need **Python 3.13**, **Node.js 22+** and Redis (Docker is the
 easiest way to get Redis).
 
+### One-command Windows launcher
+
+From the repository root, run:
+
+```powershell
+.\start-dev.bat
+```
+
+The launcher starts Redis in Docker, applies database migrations, then opens
+four labeled terminal windows for Django, the Celery worker, Celery beat and
+the React frontend. On its first run it also creates `.env`, creates the Python
+virtual environment and installs missing Python or npm dependencies. Close the
+individual windows (or press Ctrl+C in each) to stop the native services.
+
+Do not run the full Docker stack at the same time. The launcher detects its
+containers and stops with an explanation instead of starting duplicate workers
+or a second Celery beat process.
+
+### Manual startup
+
 ```powershell
 # 0. Environment file and Redis
 Copy-Item .env.example .env
