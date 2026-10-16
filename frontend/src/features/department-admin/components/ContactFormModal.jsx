@@ -1,5 +1,10 @@
 import { useEffect, useId, useState } from "react";
 
+const YEAR_LEVEL_OPTIONS = ["1", "2", "3", "4"];
+const SECTION_OPTIONS = Array.from({ length: 26 }, (_, index) =>
+  String.fromCharCode(65 + index)
+);
+
 const EMPTY_FORM = {
   first_name: "",
   last_name: "",
@@ -150,30 +155,40 @@ export default function ContactFormModal({ show, contact, groups, onSave, onCanc
               <label htmlFor={yearId} className="form-label sg-label">
                 Year level
               </label>
-              <input
+              <select
                 id={yearId}
-                type="text"
-                className="form-control sg-input"
+                className="form-select sg-input"
                 value={form.year_level}
                 onChange={handleChange("year_level")}
-                placeholder="e.g. 1"
                 disabled={isSubmitting}
-              />
+              >
+                <option value="">Select year level</option>
+                {YEAR_LEVEL_OPTIONS.map((yearLevel) => (
+                  <option key={yearLevel} value={yearLevel}>
+                    {yearLevel}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="col-md-6">
               <label htmlFor={sectionId} className="form-label sg-label">
                 Section
               </label>
-              <input
+              <select
                 id={sectionId}
-                type="text"
-                className="form-control sg-input"
+                className="form-select sg-input"
                 value={form.section}
                 onChange={handleChange("section")}
-                placeholder="e.g. A"
                 disabled={isSubmitting}
-              />
+              >
+                <option value="">Select section</option>
+                {SECTION_OPTIONS.map((section) => (
+                  <option key={section} value={section}>
+                    {section}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

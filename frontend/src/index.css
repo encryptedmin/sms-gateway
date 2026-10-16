@@ -429,6 +429,15 @@ input[type="radio"] {
   opacity: 0.7;
 }
 
+/* Native select popups do not reliably inherit translucent control colors.
+   Give dark-theme options an opaque, high-contrast palette so their labels
+   remain visible before hover and while selected. */
+:root[data-theme="dark"] .form-select option,
+:root[data-theme="dark"] .form-select optgroup {
+  background-color: #0e162a;
+  color: #f1f5fc;
+}
+
 .form-text {
   color: var(--sg-text-500);
 }
